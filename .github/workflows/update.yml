@@ -66,6 +66,9 @@ jobs:
         run: |
           mkdir -p _site/data
           cp -r site/* _site/
+          # make phones load the matching script/style after every update
+          v=$(date +%s)
+          sed -i "s#app.js\"#app.js?v=$v\"#; s#style.css\"#style.css?v=$v\"#" _site/index.html
           cp state/public/*.json _site/data/ 2>/dev/null || true
           ls -la _site _site/data
 

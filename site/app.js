@@ -610,7 +610,7 @@ function storesSheet() {
   openSheet(`<div class="sheet-head"><h2 style="margin:0">Stores</h2><button class="iconbtn" data-close>✕</button></div>
     <p class="small muted">Lacombe grocery stores with a weekly flyer. Untick any you don't shop at.</p>
     <div class="card rows">${ms.map((m) => `<label class="row" style="cursor:pointer"><input type="checkbox" class="check" data-store="${esc(m)}" ${S.off[m] ? "" : "checked"}>
-      <div class="info"><span class="store">${esc(m)}</span> ${D.local.has(m) ? `<span class="badge b-local">Lacombe</span>` : `""`}</div></label>`).join("")}</div>`,
+      <div class="info"><span class="store">${esc(m)}</span></div></label>`).join("")}</div>`,
   (el) => {
     $("[data-close]", el).onclick = closeSheet;
     $$("[data-store]", el).forEach((c) => (c.onchange = () => { if (c.checked) delete S.off[c.dataset.store]; else S.off[c.dataset.store] = true; save("off"); render(); }));
@@ -676,7 +676,7 @@ function header() {
 
 $$(".tab").forEach((t) => (t.onclick = () => { S.tab = t.dataset.tab; save("tab"); render(); window.scrollTo(0, 0); }));
 $$(".subnav .chip").forEach((c) => (c.onclick = () => { S.view = c.dataset.view; save("view"); render(); }));
-$("#storesBtn").onclick = storesSheet;
+const sb = $("#storesBtn"); if (sb) sb.onclick = storesSheet;
 document.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeSheet(); });
 
 (async function init() {

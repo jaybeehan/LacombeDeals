@@ -15,35 +15,30 @@ SKIP_MERCHANTS = {"Real Canadian Liquor Store", "Sobeys & Safeway Liquor", "Pet 
 # from every store, with proper per-lb / per-100 g pricing, and builds price history.
 # Anything you add to your watchlist on the page is matched against these results
 # (plus the full flyer listings), so broad words here = better coverage.
-STAPLES = [
-    # meat & seafood
-    "chicken breast", "chicken thighs", "chicken drumsticks", "whole chicken", "chicken wings",
-    "ground beef", "steak", "roast", "stewing beef", "pork chops", "pork tenderloin",
-    "pork loin", "ribs", "ground pork", "ground turkey", "bacon", "ham", "sausage",
-    "hot dogs", "deli meat", "salmon", "shrimp", "fish", "turkey",
-    # dairy & eggs
-    "milk", "eggs", "butter", "cheese", "cheddar", "mozzarella", "yogurt", "greek yogurt",
-    "cream", "sour cream", "cream cheese", "ice cream", "margarine",
-    # bakery & breakfast
-    "bread", "bagels", "tortillas", "buns", "english muffins", "cereal", "oatmeal",
-    "pancake", "waffles", "peanut butter", "jam",
-    # produce
-    "bananas", "apples", "oranges", "grapes", "strawberries", "blueberries", "avocado",
-    "potatoes", "onions", "carrots", "lettuce", "tomatoes", "cucumber", "peppers",
-    "broccoli", "mushrooms", "celery", "corn", "salad",
-    # pantry
-    "pasta", "pasta sauce", "rice", "flour", "sugar", "cooking oil", "olive oil",
-    "soup", "canned tomatoes", "beans", "tuna", "mac and cheese", "ketchup", "mayonnaise",
-    "crackers", "cookies", "chips", "granola bars", "nuts", "popcorn",
-    # frozen
-    "frozen pizza", "frozen vegetables", "frozen fries", "chicken nuggets", "perogies",
-    "lasagna", "frozen fruit",
-    # drinks
-    "coffee", "k-cups", "tea", "juice", "pop", "soft drinks", "water", "sparkling water",
-    # household & personal
-    "toilet paper", "paper towels", "laundry detergent", "dish soap", "dishwasher",
-    "garbage bags", "toothpaste", "shampoo", "deodorant", "diapers",
-]
+DEPARTMENTS = {
+    "Meat & seafood": ["chicken breast", "chicken thighs", "chicken drumsticks", "whole chicken",
+                       "chicken wings", "ground beef", "steak", "roast", "stewing beef", "pork chops",
+                       "pork tenderloin", "pork loin", "ribs", "ground pork", "ground turkey", "bacon",
+                       "ham", "sausage", "hot dogs", "deli meat", "salmon", "shrimp", "fish", "turkey"],
+    "Dairy & eggs": ["milk", "eggs", "butter", "cheese", "cheddar", "mozzarella", "yogurt",
+                     "greek yogurt", "cream", "sour cream", "cream cheese", "ice cream", "margarine"],
+    "Bakery & breakfast": ["bread", "bagels", "tortillas", "buns", "english muffins", "cereal",
+                           "oatmeal", "pancake", "waffles", "peanut butter", "jam"],
+    "Produce": ["bananas", "apples", "oranges", "grapes", "strawberries", "blueberries", "avocado",
+                "potatoes", "onions", "carrots", "lettuce", "tomatoes", "cucumber", "peppers",
+                "broccoli", "mushrooms", "celery", "corn", "salad"],
+    "Pantry & snacks": ["pasta", "pasta sauce", "rice", "flour", "sugar", "cooking oil", "olive oil",
+                        "soup", "canned tomatoes", "beans", "tuna", "mac and cheese", "ketchup",
+                        "mayonnaise", "crackers", "cookies", "chips", "granola bars", "nuts", "popcorn"],
+    "Frozen": ["frozen pizza", "frozen vegetables", "frozen fries", "chicken nuggets", "perogies",
+               "lasagna", "frozen fruit"],
+    "Drinks": ["coffee", "k-cups", "tea", "juice", "pop", "soft drinks", "water", "sparkling water"],
+    "Household & personal": ["toilet paper", "paper towels", "laundry detergent", "dish soap",
+                             "dishwasher", "garbage bags", "toothpaste", "shampoo", "deodorant",
+                             "diapers"],
+}
+STAPLES = [q for qs in DEPARTMENTS.values() for q in qs]
+DEPT_OF = {q: d for d, qs in DEPARTMENTS.items() for q in qs}
 
 # Categories (Flipp's _L1) that count as groceries for "Top deals"
 FOOD_L1 = {"Food, Beverages & Tobacco"}

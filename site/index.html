@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lacombe Deals</title>
+<meta name="description" content="Grocery flyer deals and restaurant promos for Lacombe, AB — updated every 6 hours.">
+<meta name="theme-color" content="#1f6f4a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f6f4a'/%3E%3Cpath d='M18 22h28l-3 22H21z' fill='none' stroke='white' stroke-width='5' stroke-linejoin='round'/%3E%3Cpath d='M25 22a7 7 0 0 1 14 0' fill='none' stroke='white' stroke-width='5'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <div>
+      <h1>Lacombe Deals</h1>
+      <p id="updated" class="muted small">Loading…</p>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="groceries" class="tab active">Groceries</button>
+    <button role="tab" data-tab="restaurants" class="tab">Restaurants</button>
+  </nav>
+</header>
+
+<main>
+  <section id="groceries" class="panel active">
+    <div class="subnav" role="tablist">
+      <button data-view="watch" class="chip active">My items</button>
+      <button data-view="top" class="chip">Top deals</button>
+      <button data-view="compare" class="chip">Compare</button>
+      <button data-view="flyers" class="chip">Flyers</button>
+      <button data-view="list" class="chip">List <span id="listCount" class="count"></span></button>
+    </div>
+    <div class="storebar">
+      <label class="switch"><input type="checkbox" id="localOnly"><span></span> Lacombe stores only</label>
+      <button class="link small" id="storesBtn">Choose stores</button>
+    </div>
+    <div id="gview"></div>
+  </section>
+
+  <section id="restaurants" class="panel">
+    <div id="rview"></div>
+  </section>
+</main>
+
+<footer class="foot muted small">
+  <p>Prices come from store flyers via Flipp; restaurant promos from Uber Eats and RedFlagDeals. Always check the store's flyer before you go — sizes and limits apply.</p>
+  <p id="sources"></p>
+</footer>
+
+<dialog id="sheet"><div id="sheetBody"></div></dialog>
+<div id="toast" role="status"></div>
+<script src="app.js"></script>
+</body>
+</html>

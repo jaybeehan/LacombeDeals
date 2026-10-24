@@ -207,10 +207,14 @@ def collect_groceries(state_dir, out_dir):
             it = build_item(raw, flyer_ids, flyer_by_id)
             if not it or it["price"] is None:
                 continue
-            if not matches(q, it["n"]):
-                continue
             items.setdefault(it["id"], it)
-            group_of.setdefault(it["id"], q)
+            # group = the search whose words actually appear in the name (used for
+            # cross-store comparisons); fall back to the first search that found it
+            if matches(q, it["n"]):
+                if it["id"] not in group_of or not group_of[it["id"]][1]:
+                    group_of[it["id"]] = (q, True)
+            else:
+                group_of.setdefault(it["id"], (q, False))
         time.sleep(0.25)
     log("searched items:", len(items))
     if len(items) < int(os.environ.get("MIN_ITEMS", "50")):
@@ -237,23 +241,25 @@ def collect_groceries(state_dir, out_dir):
         if v[5] < today:  # finished flyers only
             past_by_norm[(v[0], v[3])].append(v[2])
 
+    group_of = {k: (g if strong else "~" + g) for k, (g, strong) in group_of.items()}
     by_group = defaultdict(list)
     for iid, it in items.items():
         by_group[group_of[iid]].append(it)
 
     for iid, it in items.items():
-        others = [o["up"] for o in by_group[group_of[iid]]
+        others = [] if group_of[iid].startswith("~") else [o["up"] for o in by_group[group_of[iid]]
                   if o["id"] != iid and o["b"] == it["b"] and o["up"] and o["m"] != it["m"]]
         r = rate(it["up"], it["b"], past_by_norm.get((it["norm"], it["b"]), []), others, it["sav"])
         it["tier"], it["pct"], it["why"] = r["tier"], r["pct"], r["reason"]
-        it["g"] = group_of[iid]
+        it["g"] = group_of[iid].lstrip("~")
+        it["dept"] = config.DEPT_OF.get(group_of[iid].lstrip("~"), "Other")
 
     # -------- compact history for the page (watchlist ratings run in the browser)
     merchants = sorted({v[1] for v in obs.values()})
     midx = {m: i for i, m in enumerate(merchants)}
     hist_out = defaultdict(list)
     for v in obs.values():
-        hist_out[v[0]].append([v[4], round(v[2], 3), v[3], midx[v[1]], v[6]])
+        hist_out[v[0]].append([v[4], round(v[2], 3), v[3], midx[v[1]], v[6], v[5]])
     for k in hist_out:
         hist_out[k].sort()
 

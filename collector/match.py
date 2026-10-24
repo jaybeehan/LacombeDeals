@@ -42,12 +42,13 @@ def matches(query: str, name: str, exclude=()) -> bool:
     if not qt:
         return False
     nt = set(tokens(name))
-    # allow a compound word in the name to satisfy two query words (ground beef ~ groundbeef)
-    joined = "".join(tokens(name))
     for w in qt:
-        if w not in nt and not any(n.startswith(w) and len(w) >= 4 for n in nt):
-            if w not in joined:
-                return False
+        if w in nt:
+            continue
+        # tolerate tiny suffixes only; never "butter" ~ "butternut"
+        if len(w) >= 4 and any(n.startswith(w) and len(n) - len(w) <= 2 for n in nt):
+            continue
+        return False
     nn = " " + normalize(name) + " "
     nst = " " + " ".join(tokens(name)) + " "
     for ex in exclude or ():

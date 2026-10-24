@@ -1,0 +1,17 @@
+name: probe
+on:
+  push:
+    branches: [probe2]
+permissions:
+  contents: write
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install requests && python tools/probe.py
+      - run: |
+          mkdir /tmp/o && cp probe_out/* /tmp/o/
+          git config user.name b && git config user.email b@b
+          git checkout --orphan probe-data && git rm -rqf . && cp /tmp/o/* .
+          git add -A && git commit -qm p && git push -f origin probe-data

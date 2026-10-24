@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:foaf="http://xmlns.com/foaf/0.1/" xmlns:og="http://ogp.me/ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:schema="http://schema.org/" xmlns:sioc="http://rdfs.org/sioc/ns#" xmlns:sioct="http://rdfs.org/sioc/types#" xmlns:skos="http://www.w3.org/2004/02/skos/core#" xmlns:xsd="http://www.w3.org/2001/XMLSchema#" version="2.0" xml:base="https://recalls-rappels.canada.ca/en">
+  <channel>
+    <title>Health and safety recalls and alerts</title>
+    <link>https://recalls-rappels.canada.ca/en</link>
+    <description>Canadian Food Inspection Agency</description>
+    <language>en</language>
+    
+    <item>
+  <title>Plantropy brand Jack’d Up Bites Crispy Protein Bites - Jalapeno recalled due to undeclared milk</title>
+  <link>https://recalls-rappels.canada.ca/en/alert-recall/plantropy-brand-jack-bites-crispy-protein-bites-jalapeno-recalled-due-undeclared-milk</link>
+  <description>The affected products&amp;nbsp;are being recalled from the marketplace because they contain&amp;nbsp;milk which is not declared on the label.
+</description>
+  <pubDate>2026-10-23T12:00:00</pubDate>
+    <dc:creator>CFIA</dc:creator>
+    <guid isPermaLink="false">82848</guid>
+    </item>
+<item>
+  <title>One Degree Organic Foods brand Sprouted Whole Wheat Flour recalled due to misleading gluten free claim</title>
+  <link>https://recalls-rappels.canada.ca/en/alert-recall/one-degree-organic-foods-brand-sprouted-whole-wheat-flour-recalled-due-misleading</link>
+  <description>One Degree Organic Foods brand Sprouted Whole Wheat Flour recalled due to misleading gluten free claim.&amp;nbsp;
+</description>
+  <pubDate>2026-10-19T12:00:00</pubDate>
+    <dc:creator>CFIA</dc:creator>
+    <guid isPermaLink="false">82809</guid>
+    </item>
+<item>
+  <title>SLY brand Freeze-dried Potato Bourguignon recalled due to undeclared pea protein</title>
+  <link>https://recalls-rappels.canada.ca/en/alert-recall/sly-brand-freeze-dried-potato-bourguignon-recalled-due-undeclared-pea-protein</link>
+  <description>SLY brand Freeze-dried Potato Bourguignon recalled due to undeclared pea protein.
+</description>
+  <pubDate>2026-10-19T12:00:00</pubDate>
+    <dc:creator>CFIA</dc:creator>
+    <guid isPermaLink="false">82765</guid>
+    </item>
+
+  </channel>
+</rss>

@@ -134,7 +134,8 @@ const todayISO = now.toISOString().slice(0, 10);
 const active = (to) => !to || new Date(to) > now;
 
 async function getJSON(path) {
-  const r = await fetch(`${path}?v=${Math.floor(Date.now() / 600000)}`);
+  // always check with the server for newer data (the browser may otherwise reuse a copy for 10 min)
+  const r = await fetch(path, { cache: "no-cache" });
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return r.json();
 }

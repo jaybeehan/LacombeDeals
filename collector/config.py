@@ -45,16 +45,41 @@ FOOD_L1 = {"Food, Beverages & Tobacco"}
 HOUSEHOLD_L2 = {"Household Supplies", "Personal Care", "Paper Products", "Laundry",
                 "Cleaning Supplies", "Health & Beauty"}
 
-# Restaurant / delivery sources
-UBER_EATS_URL = "https://www.ubereats.com/ca/city/lacombe-ab"
-DOORDASH_URL = "https://www.doordash.com/en/food-delivery/lacombe-ab-restaurants/"
+# Restaurants
 RFD_FEED = "https://forums.redflagdeals.com/feed/forum/9"
 
-# Chains to recognise in RedFlagDeals posts. Ones that also appear on the Uber Eats
-# Lacombe page are marked "In Lacombe" automatically.
+# Restaurants in Lacombe. "app" = the chain puts most of its deals in its own app.
+LACOMBE_RESTAURANTS = [
+    {"name": "A&W", "type": "Burgers", "app": True},
+    {"name": "Booster Juice", "type": "Smoothies", "app": True},
+    {"name": "Boston Pizza", "type": "Pizza & pub"},
+    {"name": "Brunch Glory", "type": "Breakfast & brunch"},
+    {"name": "Buster's Pizza & Donair", "type": "Pizza & donair"},
+    {"name": "Dairy Queen", "type": "Ice cream & burgers", "app": True},
+    {"name": "Domino's", "type": "Pizza", "app": True},
+    {"name": "Edo Japan", "type": "Japanese", "app": True},
+    {"name": "KFC", "type": "Chicken", "app": True},
+    {"name": "Lacombe Bar And Steakhouse", "type": "Pub & steakhouse"},
+    {"name": "McDonald's", "type": "Burgers", "app": True},
+    {"name": "Mr. Mike's", "type": "Steakhouse"},
+    {"name": "Oishii Japanese Cuisine", "type": "Sushi"},
+    {"name": "Panago", "type": "Pizza", "app": True},
+    {"name": "Pizza Hut", "type": "Pizza", "app": True},
+    {"name": "Red Swan Pizza", "type": "Pizza"},
+    {"name": "Starbucks", "type": "Coffee", "app": True},
+    {"name": "Subway", "type": "Subs", "app": True},
+    {"name": "Sweet Capone's", "type": "Italian bakery"},
+    {"name": "Tasty Bites", "type": "Indian & pizza"},
+    {"name": "The 1947 Indian Restaurant", "type": "Indian"},
+    {"name": "Tim Hortons", "type": "Coffee & donuts", "app": True},
+    {"name": "Triple O's", "type": "Burgers"},
+    {"name": "Wendy's", "type": "Burgers", "app": True},
+]
+
+# Chains to recognise in RedFlagDeals posts (Lacombe ones are shown first)
 CHAINS = [
-    "McDonald's", "Tim Hortons", "A&W", "Burger King", "Wendy's", "KFC", "Subway",
-    "Pizza Hut", "Domino's", "Little Caesars", "Papa John's", "Pizza Pizza", "Pizza 73",
+    "McDonald's", "McDonalds", "Tim Hortons", "Tims", "A&W", "Burger King", "Wendy's", "KFC", "Subway",
+    "Pizza Hut", "Domino's", "Dominos", "Little Caesars", "Papa John's", "Pizza Pizza", "Pizza 73",
     "Boston Pizza", "Panago", "Dairy Queen", "Starbucks", "Popeyes", "Harvey's",
     "Swiss Chalet", "Mary Brown's", "Taco Bell", "Taco Time", "Chipotle", "Five Guys",
     "Freshii", "Booster Juice", "Edo Japan", "Triple O's", "White Spot", "Denny's",
@@ -63,15 +88,9 @@ CHAINS = [
     "Osmow's", "Mucho Burrito", "Quesada", "Barburrito", "Second Cup", "Krispy Kreme",
     "Cora", "Smitty's", "Humpty's", "Ricky's", "Original Joe's", "Browns Socialhouse",
     "Mr. Mike's", "Mr Mikes", "Fatburger", "Nando's", "Jollibee", "Church's",
-    "Buster's Pizza", "Red Swan", "Opa!", "Pita Pit", "Jugo Juice", "Menchie's",
-    "Cinnabon", "Wing Machine", "Tropical Smoothie", "Marble Slab", "Dominos",
-    "Shake Shack", "Panera", "St-Hubert", "Thai Express", "Manchu Wok", "Sushi",
+    "Opa!", "Pita Pit", "Jugo Juice", "Menchie's", "Cinnabon", "Marble Slab",
+    "Shake Shack", "Panera", "St-Hubert", "Thai Express", "Manchu Wok",
 ]
-DELIVERY_APPS = {
-    "Uber Eats": ["uber eats", "ubereats", "uber one"],
-    "DoorDash": ["doordash", "door dash", "dashpass"],
-    "SkipTheDishes": ["skipthedishes", "skip the dishes", "skip "],
-    "Instacart": ["instacart"],
-}
-FOOD_WORDS = ["restaurant", "pizza", "burger", "fries", "combo", "meal deal", "free food",
-              "coupon", "bogo", "wings", "sandwich", "coffee", "donut", "taco", "sub "]
+# Posts about these are skipped entirely
+DELIVERY_WORDS = ["uber eats", "ubereats", "uber one", "doordash", "door dash", "dashpass",
+                  "skipthedishes", "skip the dishes", "skip+", "instacart", "delivery fee"]

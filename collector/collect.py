@@ -52,17 +52,6 @@ def get_json(url, params=None, tries=3):
     return None
 
 
-def get_html(url):
-    """Fetch a web page looking like a real Chrome (some sites block plain scripts)."""
-    try:
-        from curl_cffi import requests as cr
-        r = cr.get(url, impersonate="chrome", timeout=40)
-        return r.status_code, r.text
-    except Exception:
-        r = S.get(url, timeout=40)
-        return r.status_code, r.text
-
-
 def https(u):
     return u.replace("http://", "https://", 1) if u else u
 
@@ -274,136 +263,31 @@ def collect_groceries(state_dir, out_dir):
 
 
 # ---------------------------------------------------------------- restaurants
-PROMO_RE = re.compile(
-    r"(\d+\s*%\s*off|\$\s*\d+(?:\.\d+)?\s*off|buy\s*\d+,?\s*get\s*\d+|buy\s*1|bogo|"
-    r"free\s+(?:item|delivery|\w+)|spend\s+\$|save\s+\$|\$0\s+delivery|items?\s+on\s+sale|"
-    r"offer|deal|\d+\+?\s+items on sale)", re.I)
-
-
-def parse_store_cards(page_html, base):
-    """Store cards on Uber Eats / DoorDash city pages: a link to /store/ with the name
-    in an <h3>; promo badges are the short texts before or after the name."""
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(page_html, "lxml")
-    out, seen = [], set()
-    for a in soup.select('a[href*="/store/"]'):
-        href = a.get("href") or ""
-        if "/store/" not in href or href.startswith("https://play.") or "apps.apple" in href:
-            continue
-        card = a
-        for _ in range(5):
-            if card.find("h3"):
-                break
-            card = card.parent
-        h3 = card.find("h3") if card else None
-        if not h3:
-            continue
-        name = h3.get_text(" ", strip=True)
-        url = href if href.startswith("http") else base + href
-        key = url.split("?")[0]
-        if key in seen:
-            continue
-        seen.add(key)
-        texts = [t.strip() for t in card.stripped_strings]
-        promos, cuisine, address = [], "", ""
-        for t in texts:
-            if t == name or t in ("New", "Sponsored") or len(t) > 70 and "•" not in t:
-                continue
-            if "•" in t and not cuisine:
-                cuisine = t
-            elif re.search(r"\b(lacombe|AB|T4L)\b", t, re.I) and re.search(r"\d", t):
-                address = t.rstrip(",")
-            elif PROMO_RE.search(t) and len(t) <= 60 and not re.match(r"^\d\.\d", t):
-                # "$0 delivery fee • 0.6 mi • 22 min" is a standard listing line, not a promo
-                t = " • ".join(x for x in t.split(" • ")
-                               if not re.search(r"^\$0 delivery fee$|\d\s*(mi|km|min)$", x.strip(), re.I))
-                if t:
-                    promos.append(t)
-        address = re.sub(r",?\s*NAMER\b", ", AB", address).replace("\n", " ")
-        kind = "grocery" if re.search(r"grocery|liquor|alcohol|convenience|pharmacy", cuisine, re.I) else "restaurant"
-        out.append({"name": name, "url": key, "cuisine": cuisine, "address": address, "kind": kind,
-                    "promos": list(dict.fromkeys(promos))})
-    return out
-
-
-def brand_of(name):
-    b = re.sub(r"\s*\(.*?\)\s*", " ", name).strip()
-    b = re.sub(r"\s+canada$", "", b, flags=re.I)
-    if b.isupper() and len(b) > 4:
-        b = b.title()
-    return b
-
-
 def collect_restaurants(state_dir, out_dir):
-    st_path = os.path.join(state_dir, "restaurants.json")
-    st = load(st_path, {"stores": {}})
-    stores = st["stores"]
-    now = NOW.isoformat()
-    sources = {}
-    for src, url, base in (("Uber Eats", config.UBER_EATS_URL, "https://www.ubereats.com"),
-                           ("DoorDash", config.DOORDASH_URL, "https://www.doordash.com")):
-        try:
-            code, page = get_html(url)
-            cards = parse_store_cards(page, base) if code == 200 else []
-            sources[src] = {"ok": bool(cards), "count": len(cards), "url": url,
-                            "msg": "" if cards else f"blocked or changed (HTTP {code})"}
-            log(src, code, len(cards), "stores")
-        except Exception as e:
-            cards = []
-            sources[src] = {"ok": False, "count": 0, "url": url, "msg": str(e)[:200]}
-        if not cards:
-            continue  # keep previous data for this source rather than wiping it
-        seen_now = set()
-        for c in cards:
-            k = f"{src}|{c['url']}"
-            seen_now.add(k)
-            old = stores.get(k, {})
-            promo_since = dict(old.get("promo_since", {}))
-            for p in c["promos"]:
-                promo_since.setdefault(p, now)
-            promo_since = {p: t for p, t in promo_since.items() if p in c["promos"]}
-            stores[k] = {"src": src, "name": c["name"], "brand": brand_of(c["name"]),
-                         "url": c["url"], "cuisine": c["cuisine"], "address": c["address"],
-                         "kind": c["kind"],
-                         "promos": c["promos"], "promo_since": promo_since,
-                         "first_seen": old.get("first_seen", now), "last_seen": now}
-        for k, v in stores.items():
-            if v["src"] == src and k not in seen_now:
-                v["promos"], v["promo_since"] = [], {}
-    # drop stores not seen for 30 days
-    cutoff = (NOW - timedelta(days=30)).isoformat()
-    st["stores"] = {k: v for k, v in stores.items() if v["last_seen"] >= cutoff}
-    save(st_path, st)
-
-    # ---- RedFlagDeals Hot Deals: restaurant + delivery-app deals, kept 30 days
+    """Restaurant deals posted on RedFlagDeals (kept for 30 days). No delivery apps."""
+    old = os.path.join(state_dir, "restaurants.json")  # from the delivery-app version
+    if os.path.exists(old):
+        os.remove(old)
     rfd_path = os.path.join(state_dir, "rfd.json")
     rfd = load(rfd_path, {"posts": {}})
-    brands_here = {normalize(v["brand"]) for v in st["stores"].values()}
-    try:
-        r = S.get(config.RFD_FEED, timeout=40)
-        posts = parse_rfd(r.text) if r.status_code == 200 else []
-        sources["RedFlagDeals"] = {"ok": r.status_code == 200, "count": len(posts),
-                                   "url": "https://forums.redflagdeals.com/hot-deals-f9/",
-                                   "msg": "" if r.status_code == 200 else f"HTTP {r.status_code}"}
-        for p in posts:
-            cls = classify_rfd(p["title"], p["summary"], brands_here)
-            if cls:
-                p.update(cls)
-                rfd["posts"].setdefault(p["id"], p).update(p)
-    except Exception as e:
-        sources["RedFlagDeals"] = {"ok": False, "count": 0, "msg": str(e)[:200]}
-    cutoff = (NOW - timedelta(days=30)).isoformat()
-    rfd["posts"] = {k: v for k, v in rfd["posts"].items() if (v.get("published") or "") >= cutoff[:10]}
+    rfd["posts"] = {k: v for k, v in rfd["posts"].items() if classify_rfd(v["title"], v.get("summary", ""))}
+    r = S.get(config.RFD_FEED, timeout=40)
+    if r.status_code != 200:
+        raise RuntimeError(f"RedFlagDeals feed HTTP {r.status_code}")
+    posts = parse_rfd(r.text)
+    for p in posts:
+        cls = classify_rfd(p["title"], p["summary"])
+        if cls:
+            p.update(cls)
+            rfd["posts"].setdefault(p["id"], p).update(p)
+    cutoff = (NOW - timedelta(days=30)).isoformat()[:10]
+    rfd["posts"] = {k: v for k, v in rfd["posts"].items() if (v.get("published") or "")[:10] >= cutoff}
     save(rfd_path, rfd)
-
-    out_stores = sorted(st["stores"].values(), key=lambda v: (not v["promos"], v["brand"].lower()))
     save(os.path.join(out_dir, "restaurants.json"), {
-        "stores": out_stores,
+        "restaurants": config.LACOMBE_RESTAURANTS,
         "rfd": sorted(rfd["posts"].values(), key=lambda p: p.get("published", ""), reverse=True),
-        "sources": sources,
     })
-    return {"stores": len(out_stores), "with_promos": sum(1 for s in out_stores if s["promos"]),
-            "rfd": len(rfd["posts"]), "sources": sources}
+    return {"rfd_posts_checked": len(posts), "rfd_kept": len(rfd["posts"])}
 
 
 def parse_rfd(xml):
@@ -434,18 +318,26 @@ def parse_rfd(xml):
     return posts
 
 
-def classify_rfd(title, summary, brands_here):
-    text = f" {title} {summary} ".lower()
+def _key(t):
+    return re.sub(r"[^a-z0-9]", "", t.lower().replace("&", "and"))
+
+
+LOCAL_KEYS = {_key(r["name"]) for r in config.LACOMBE_RESTAURANTS}
+
+
+def classify_rfd(title, summary):
     tl = f" {title} ".lower()
-    for app, words in config.DELIVERY_APPS.items():
-        if any(w in tl for w in words):
-            return {"kind": "delivery", "chain": app, "local": True}
+    if any(w in f" {title} {summary} ".lower() for w in config.DELIVERY_WORDS):
+        return None  # delivery-app deals are not wanted
     for c in config.CHAINS:
-        cl = c.lower()
-        if re.search(r"(?<![a-z])" + re.escape(cl) + r"(?![a-z])", tl):
-            here = normalize(c) in brands_here or any(normalize(c) in b for b in brands_here)
-            return {"kind": "restaurant", "chain": c, "local": bool(here)}
-    if re.search(r"\[(restaurant|food)", tl) or "restaurant" in tl:
+        if re.search(r"(?<![a-z])" + re.escape(c.lower()) + r"(?![a-z])", tl):
+            k = _key(c)
+            local = any(k in lk or lk in k for lk in LOCAL_KEYS) or (k == "tims" and "timhortons" in LOCAL_KEYS) \
+                or (k == "mcdonalds" and "mcdonalds" in LOCAL_KEYS)
+            name = {"tims": "Tim Hortons", "mcdonalds": "McDonald's", "dominos": "Domino's",
+                    "mrmikes": "Mr. Mike's"}.get(k, c)
+            return {"kind": "restaurant", "chain": name, "local": bool(local)}
+    if re.search(r"\[(restaurant|food)", tl) or " restaurant" in tl:
         return {"kind": "restaurant", "chain": "", "local": False}
     return None
 

@@ -128,7 +128,7 @@ function rate(up, basis, past, others, sav, target, tbasis) {
 }
 
 // ------------------------------------------------------------------ data
-const D = { meta: {}, items: [], flyers: [], flyerItems: {}, hist: { h: {}, merchants: [] }, rest: { stores: [], rfd: [], sources: {} } };
+const D = { meta: {}, items: [], flyers: [], flyerItems: {}, hist: { h: {}, merchants: [] }, rest: { restaurants: [], rfd: [] } };
 const now = new Date();
 const todayISO = now.toISOString().slice(0, 10);
 const active = (to) => !to || new Date(to) > now;
@@ -571,61 +571,35 @@ function viewList() {
 // ------------------------------------------------------------------ view: restaurants
 function viewRestaurants() {
   const el = $("#rview");
-  const st = (D.rest.stores || []).filter((s) => s.kind !== "grocery");
-  const groc = (D.rest.stores || []).filter((s) => s.kind === "grocery" && s.promos.length);
-  // merge the same restaurant from Uber Eats + DoorDash
-  const byBrand = {};
-  const bkey = (b) => normalize(b).replace(/ /g, "");
-  for (const s of st) (byBrand[bkey(s.brand)] = byBrand[bkey(s.brand)] || []).push(s);
-  const withPromo = Object.values(byBrand).filter((g) => g.some((s) => s.promos.length));
-  // NEW = a promo that appeared after we started tracking the restaurant, within the last 2 days
-  const isNew = (s) => Object.values(s.promo_since || {}).some((t) =>
-    now - new Date(t) < 48 * 3600000 && new Date(t) - new Date(s.first_seen) > 3600000);
-  withPromo.sort((a, b) => (b.some(isNew) - a.some(isNew)) || a[0].brand.localeCompare(b[0].brand));
-
-  const restCard = (g) => {
-    const s0 = g[0];
-    const promos = g.flatMap((s) => s.promos.map((p) => `<span class="promo">${esc(p)}</span>`));
-    const links = g.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener">Order on ${esc(s.src)} ↗</a>`).join(" · ");
-    return `<article class="card rest"><div class="info">
-      <h3>${esc(s0.brand)} ${g.some(isNew) ? `<span class="badge b-new">NEW</span>` : ""}</h3>
-      <div class="small muted">${esc(s0.address || "")}</div>
-      <div>${promos.join("")}</div>
-      <div class="small" style="margin-top:8px">${links}</div></div></article>`;
-  };
   const rfd = D.rest.rfd || [];
-  const rfdLocal = rfd.filter((p) => p.kind === "restaurant" && p.local);
-  const rfdApps = rfd.filter((p) => p.kind === "delivery");
-  const rfdOther = rfd.filter((p) => p.kind === "restaurant" && !p.local);
-  const rfdList = (arr) => arr.length ? `<div class="card">${arr.slice(0, 30).map((p) => `<a class="rfd" href="${esc(p.link)}" target="_blank" rel="noopener">
-      <div class="t">${esc(p.title)}</div><div class="small muted">${esc(p.chain ? p.chain + " · " : "")}${esc(ago(p.published))}</div></a>`).join("")}</div>`
-    : `<div class="card empty small">Nothing in the last 30 days.</div>`;
-
-  const allBrands = Object.values(byBrand).sort((a, b) => a[0].brand.localeCompare(b[0].brand));
-  const gsearch = (b) => `https://www.google.com/search?tbs=qdr:w&q=${encodeURIComponent(`"${b}" deal OR promo OR coupon Canada`)}`;
+  const local = rfd.filter((p) => p.local);
+  const other = rfd.filter((p) => !p.local);
+  const rfdList = (arr, empty) => arr.length ? `<div class="card">${arr.slice(0, 40).map((p) => `<a class="rfd" href="${esc(p.link)}" target="_blank" rel="noopener">
+      <div class="t">${esc(p.title)}</div><div class="small muted">${esc(p.chain ? p.chain + " · " : "")}posted ${esc(ago(p.published))}</div></a>`).join("")}</div>`
+    : `<div class="card empty small">${empty}</div>`;
+  const rests = (D.rest.restaurants || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const gsearch = (n) => `https://www.google.com/search?tbs=qdr:m&q=${encodeURIComponent(`"${n}" deal OR special OR promo Alberta`)}`;
+  const dealCount = (n) => local.filter((p) => normalize(p.chain).replace(/ /g, "") === normalize(n).replace(/ /g, "")).length;
 
   el.innerHTML = `
-    <h2 style="margin-top:4px">Delivery deals in Lacombe right now</h2>
-    ${withPromo.length ? `<div class="stack">${withPromo.map(restCard).join("")}</div>` : `<div class="card empty">No delivery promos showing for Lacombe right now.</div>`}
-    <p class="small muted">Promos come from the Uber Eats Lacombe page${D.rest.sources?.DoorDash?.ok ? " and DoorDash" : ""}. Some offers need a minimum order or Uber One — check at checkout.</p>
-
-    <h2>Lacombe chains with deals on RedFlagDeals</h2>
-    ${rfdList(rfdLocal)}
-    <h2>Delivery app promo codes &amp; offers</h2>
-    ${rfdList(rfdApps)}
-    <details class="more"><summary>Other restaurant deals in Canada (${rfdOther.length})</summary>${rfdList(rfdOther)}</details>
-
-    ${groc.length ? `<h2>Grocery delivery promos</h2><div class="card rows">${groc.map((s) => `<div class="row"><div class="info"><div class="store">${esc(s.brand)}</div><div>${s.promos.map(esc).join(" · ")}</div></div><a class="small" href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.src)} ↗</a></div>`).join("")}</div>` : ""}
+    <h2 style="margin-top:4px">Deals at Lacombe restaurants</h2>
+    ${rfdList(local, "No deals posted for Lacombe restaurants in the last 30 days — checked every 6 hours.")}
+    <p class="small muted">Deals spotted on RedFlagDeals for chains with a Lacombe location (delivery-app offers are left out). Some are app-only or “participating locations” — check before you go.</p>
 
     <h2>My restaurant notes</h2>
     <form class="addrow" id="noteForm"><input type="text" id="noteText" placeholder="e.g. Boston Pizza – Tuesday kids eat free"><button class="btn">Add</button></form>
     ${S.notes.length ? `<div class="card">${S.notes.map((n) => `<div class="note"><div style="flex:1">${esc(n.text)}</div><button class="iconbtn" data-dnote="${n.id}" aria-label="Delete note">✕</button></div>`).join("")}</div>`
       : `<p class="small muted">Keep track of weekly specials you know about (wing night, kids eat free…).</p>`}
 
-    <details class="more"><summary>All Lacombe restaurants (${allBrands.length})</summary><div class="card rows">
-      ${allBrands.map((g) => `<div class="row"><div class="info"><div class="store">${esc(g[0].brand)}</div><div class="small muted">${esc((g[0].cuisine || "").split(" • ").slice(0, 3).join(" · "))}</div></div>
-        <div class="side small"><a href="${gsearch(g[0].brand)}" target="_blank" rel="noopener">Find deals ↗</a><br><a href="${esc(g[0].url)}" target="_blank" rel="noopener">Menu ↗</a></div></div>`).join("")}
-    </div></details>`;
+    <h2>Lacombe restaurants</h2>
+    <div class="card rows">${rests.map((r) => {
+      const n = dealCount(r.name);
+      return `<div class="row"><div class="info"><div class="store">${esc(r.name)} ${n ? `<span class="badge t-great">${n} deal${n > 1 ? "s" : ""}</span>` : ""}</div>
+        <div class="small muted">${esc(r.type || "")}${r.app ? " · best deals are in their app" : ""}</div></div>
+        <div class="side small"><a href="${gsearch(r.name)}" target="_blank" rel="noopener">Find deals ↗</a></div></div>`;
+    }).join("")}</div>
+
+    <details class="more"><summary>Other restaurant deals in Canada (${other.length})</summary>${rfdList(other, "Nothing in the last 30 days.")}</details>`;
   $("#noteForm").onsubmit = (e) => { e.preventDefault(); const t = $("#noteText").value.trim(); if (!t) return; S.notes.push({ id: uid(), text: t }); save("notes"); viewRestaurants(); };
   $$("[data-dnote]", el).forEach((b) => (b.onclick = () => { S.notes = S.notes.filter((n) => n.id !== b.dataset.dnote); save("notes"); viewRestaurants(); }));
 }
@@ -695,7 +669,7 @@ function header() {
     : "Waiting for the first update…";
   const bits = [];
   if (g.ok === false) bits.push(`Grocery update failed ${ago(g.failed_at)} (showing the previous data).`);
-  for (const [name, s] of Object.entries(D.rest.sources || {})) if (!s.ok) bits.push(`${name}: ${s.msg || "unavailable"}.`);
+  if (r.ok === false) bits.push(`Restaurant deals update failed ${ago(r.failed_at)}.`);
   if (g.stats) bits.push(`${g.stats.flyers} flyers · ${g.stats.items} tracked prices · ${g.stats.history_points} price points since ${g.stats.history_since}.`);
   $("#sources").textContent = bits.join(" ");
 }

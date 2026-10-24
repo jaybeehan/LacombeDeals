@@ -2,7 +2,7 @@
 
 **Site:** https://jaybeehan.github.io/LacombeDeals/
 
-Grocery flyer deals and restaurant/delivery promos for Lacombe, AB. Refreshed automatically every 6 hours by GitHub Actions — nothing to run or host.
+Grocery flyer deals and restaurant deals for Lacombe, AB. Refreshed automatically every 6 hours by GitHub Actions — nothing to run or host.
 
 ## What it does
 
@@ -14,10 +14,10 @@ Grocery flyer deals and restaurant/delivery promos for Lacombe, AB. Refreshed au
 - **List** – tap **+** on any deal to build a shopping list grouped by store; copy it to text.
 - *Lacombe stores only* toggle and per-store choices (most other flyers are Red Deer stores).
 
-**Restaurants**
-- Current delivery promos for Lacombe restaurants (Uber Eats; DoorDash when it allows it), with a NEW tag for promos that just appeared.
-- Restaurant chain and delivery-app deals posted on RedFlagDeals (Lacombe chains first).
-- Your own notes for weekly specials, and a list of every Lacombe restaurant with menu and deal-search links.
+**Restaurants** (no delivery apps)
+- Deals posted on RedFlagDeals for chains with a Lacombe location, then other Canadian restaurant deals.
+- Your own notes for weekly specials.
+- Every Lacombe restaurant with a deal count and a "Find deals" search link. Edit the list in `collector/config.py`.
 
 Your items, list, store choices and notes are saved in your browser. Use **Share them to another phone** on the *My items* page to copy them to another device.
 
@@ -28,7 +28,7 @@ Each run records every flyer price (store, size, $/kg or $/L) on the `data` bran
 ## Running it
 
 - **Refresh now:** Actions → *Update deals & publish site* → *Run workflow*.
-- **Change what's tracked:** edit `collector/config.py` (postal code, Lacombe store list, searched staples, restaurant chains).
+- **Change what's tracked:** edit `collector/config.py` (postal code, Lacombe store list, searched staples, Lacombe restaurants).
 - Code: `collector/` (Python, runs in Actions) and `site/` (static page).
 
-Data sources: Flipp (store flyers), Uber Eats Lacombe page, DoorDash Lacombe page, RedFlagDeals Hot Deals feed. Always confirm prices in the store's flyer.
+Data sources: Flipp (store flyers) and the RedFlagDeals Hot Deals feed. Always confirm prices in the store's flyer.

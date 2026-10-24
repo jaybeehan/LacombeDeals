@@ -5,10 +5,14 @@ TOWN = "Lacombe"
 
 # Only grocery stores in Lacombe itself (names exactly as Flipp spells them).
 # Lacombe City Mart has no online flyer.
-LACOMBE_STORES = {"Sobeys", "No Frills", "Co-op", "M&M Food Market"}
+LACOMBE_STORES = {"Sobeys", "No Frills", "Co-op", "M&M Food Market", "Shoppers Drug Mart", "Rexall"}
+
+# Drug stores: their flyers are mostly non-food, so only items confirmed as
+# food/drink by Flipp's own category are kept.
+DRUG_STORES = {"Shoppers Drug Mart", "Rexall"}
 
 # Side flyers from those stores that aren't groceries
-SKIP_FLYER_NAMES = ["pharmacy", "pet", "fur-tastic", "liquor", "home centre", "gas bar"]
+SKIP_FLYER_NAMES = ["pet", "fur-tastic", "liquor", "home centre", "gas bar"]
 
 # Flyer items with these words are household / pharmacy / pet - not groceries
 NON_FOOD_WORDS = [
@@ -40,7 +44,8 @@ DEPARTMENTS = {
                 "broccoli", "mushrooms", "celery", "corn", "salad"],
     "Pantry & snacks": ["pasta", "pasta sauce", "rice", "flour", "sugar", "cooking oil", "olive oil",
                         "soup", "canned tomatoes", "beans", "tuna", "mac and cheese", "ketchup",
-                        "mayonnaise", "crackers", "cookies", "chips", "granola bars", "nuts", "popcorn"],
+                        "mayonnaise", "crackers", "cookies", "chips", "granola bars", "nuts", "popcorn",
+                        "chocolate", "candy"],
     "Frozen": ["frozen pizza", "frozen vegetables", "frozen fries", "chicken nuggets", "perogies",
                "lasagna", "frozen fruit"],
     "Drinks": ["coffee", "k-cups", "tea", "juice", "pop", "soft drinks", "water", "sparkling water"],

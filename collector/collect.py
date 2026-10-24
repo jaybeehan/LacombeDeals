@@ -221,6 +221,14 @@ def collect_groceries(state_dir, out_dir):
                 group_of.setdefault(it["id"], (q, False))
         time.sleep(0.25)
     log("searched items:", len(items))
+
+    # Drug-store flyers: keep only items Flipp categorises as food/drink
+    food_ids = set(items)
+    for f in flyers:
+        if f["merchant"] in config.DRUG_STORES:
+            kept = [i for i in flyer_items[str(f["id"])] if i["id"] in food_ids]
+            flyer_items[str(f["id"])] = kept
+            f["count"] = len(kept)
     if len(items) < int(os.environ.get("MIN_ITEMS", "30")):
         raise RuntimeError(f"Only {len(items)} items found - Flipp may be failing")
 

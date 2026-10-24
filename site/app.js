@@ -339,7 +339,7 @@ function viewWatch() {
       <button class="btn">Add</button></form>`;
   if (!S.watch.length) {
     html += `<div class="card empty"><p><strong>Add the groceries you buy often.</strong><br>
-      Each one is checked against the Sobeys, No Frills, Co-op and M&amp;M flyers every 6 hours and rated from
+      Each one is checked against the Sobeys, No Frills, Co-op, M&amp;M, Shoppers and Rexall flyers every 6 hours and rated from
       <em>Regular price</em> up to <em>Stock up</em>, based on its price history.</p></div>`;
   }
   if (sugg.length) html += `<div class="suggest">${sugg.slice(0, 12).map((s) => `<button class="chip sm" data-sugg="${esc(s)}">+ ${esc(s)}</button>`).join("")}</div>`;
@@ -608,7 +608,7 @@ function viewRestaurants() {
 function storesSheet() {
   const ms = [...new Set(D.flyers.map((f) => f.merchant))].sort((a, b) => (D.local.has(b) - D.local.has(a)) || a.localeCompare(b));
   openSheet(`<div class="sheet-head"><h2 style="margin:0">Stores</h2><button class="iconbtn" data-close>✕</button></div>
-    <p class="small muted">Lacombe grocery stores with a weekly flyer. Untick any you don't shop at.</p>
+    <p class="small muted">Lacombe stores with a weekly flyer (food and drinks only). Untick any you don't shop at.</p>
     <div class="card rows">${ms.map((m) => `<label class="row" style="cursor:pointer"><input type="checkbox" class="check" data-store="${esc(m)}" ${S.off[m] ? "" : "checked"}>
       <div class="info"><span class="store">${esc(m)}</span></div></label>`).join("")}</div>`,
   (el) => {

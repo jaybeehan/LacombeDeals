@@ -7,12 +7,12 @@ Grocery flyer deals and restaurant deals for Lacombe, AB. Refreshed automaticall
 ## What it does
 
 **Groceries**
-- **My items** – add things you buy (chicken breast, butter, coffee…). Each one is matched against the Lacombe grocery flyers (Sobeys, No Frills, Co-op, M&M Food Market — food only) and rated **Stock up / Great deal / Good deal / Regular price / Pricier than usual**, with a 6-month price sparkline. Set a target price (⋯ button) and anything at or under it shows as *Stock up*. Hide wrong matches with *Not this* or exclude words.
+- **My items** – add things you buy (chicken breast, butter, coffee…). Each one is matched against the Lacombe grocery flyers (Sobeys, No Frills, Co-op, M&M Food Market, Shoppers Drug Mart, Rexall — food and drinks only) and rated **Stock up / Great deal / Good deal / Regular price / Pricier than usual**, with a 6-month price sparkline. Set a target price (⋯ button) and anything at or under it shows as *Stock up*. Hide wrong matches with *Not this* or exclude words.
 - **Top deals** – the best-rated deals across all stores, by department.
 - **Compare** – search anything and see every store's price sorted by $/lb, $/L or each.
 - **Flyers** – every grocery flyer, searchable, with a link to the full flyer on Flipp.
 - **List** – tap **+** on any deal to build a shopping list grouped by store; copy it to text.
-- Choose which of the four stores to include.
+- Choose which stores to include.
 
 **Restaurants** (no delivery apps)
 - Deals posted on RedFlagDeals for chains with a Lacombe location, then other Canadian restaurant deals.

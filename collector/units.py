@@ -129,7 +129,15 @@ def unit_price(name: str, current_price, pre_text: str = None, post_text: str = 
         n = int(m.group(1))
         if 1 < n <= 12 and price is not None:
             multi = n
-            price = price / n
+            # Flipp sometimes gives the total ("3 for" 8) and sometimes the per-item
+            # price ("3 for" 2.67 meaning 3 for $8). A per-item figure times n lands
+            # on a round total; a total itself is usually a round number already.
+            total = price * n
+            cents = round(price * 100) % 100
+            looks_per_item = (abs(total - round(total)) <= 0.02 and cents not in (0, 49, 50, 99)) or \
+                             (abs(total + 0.01 - round(total + 0.01)) <= 0.011 and cents not in (0, 49, 50, 99) and round(total*100) % 100 == 99)
+            if not looks_per_item:
+                price = price / n
 
     low_post = post.lower()
     # Some flyers print the per-kg price right in the post text: "/lb$14.31/kg"

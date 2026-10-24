@@ -97,6 +97,10 @@ function rate(up, basis, past, others, sav, target, tbasis) {
   if (fromHist) { ref = median(past); src = `usual ${fmtUnit(ref, basis)}`; }
   else if ((basis === "kg" || basis === "L") && others.length >= 2) { ref = median([...others, up]); src = `typical ${fmtUnit(ref, basis)} at other stores this week`; }
   if (ref) {
+    let pct = Math.round(100 * (1 - up / ref));
+    if (!fromHist && Math.abs(pct) > 45) { ref = null; }
+  }
+  if (ref) {
     const pct = Math.round(100 * (1 - up / ref));
     out.pct = pct; out.ref = ref;
     if (fromHist) tier = pct >= 30 ? "stockup" : pct >= 18 ? "great" : pct >= 7 ? "good" : pct <= -12 ? "above" : "regular";
@@ -212,20 +216,37 @@ function histFor(q, ex, hide = []) {
 }
 const isPast = (p) => (p[5] || p[0]) < todayISO;
 
+// Is this item really the thing, or the word used in another product? ("butter" vs
+// "butter chicken ravioli" or "peanut butter"). Used to pick the headline deal.
+const BEFORE = new Set(["peanut", "almond", "apple", "cocoa", "shea", "body", "cookie", "nut", "cashew", "hazelnut", "garlic", "buffalo", "honey", "chocolate", "coconut", "condensed", "evaporated"]);
+const AFTER = new Set(["chicken", "cookie", "tart", "cup", "sauce", "bar", "cracker", "chip", "squash", "popcorn", "cake", "candy", "croissant", "ravioli", "tart", "pecan", "flavour", "flavor", "seasoning", "dip", "spread", "wrap", "pie", "lettuce", "bean", "milk", "noodle", "soup", "rice", "pasta", "roll", "bun", "sandwich", "pizza", "burger", "stick", "nugget", "strip", "finger", "kiev", "cordon", "bites", "bite", "pop", "pod", "mix", "drink", "beverage"]);
+function relevant(q, name) {
+  const qt = tokens(q), nt = tokens(name);
+  const qs = new Set(qt);
+  for (let i = 0; i < nt.length; i++) {
+    if (nt[i] !== qt[0] && !(qt[0].length >= 4 && nt[i].startsWith(qt[0]))) continue;
+    const prev = nt[i - 1], next = nt[i + qt.length];
+    if (prev && BEFORE.has(prev) && !qs.has(prev)) return false;
+    if (next && AFTER.has(next) && !qs.has(next)) return false;
+    return true;
+  }
+  return true;
+}
+
 function analyseWatch(w) {
   const ex = w.ex || [], hide = w.hide || [];
   const cur = D.items.filter((i) => okStore(i.m) && matches(w.q, i.n, ex) && !hide.includes(i.norm));
   const counts = {};
-  for (const i of cur) if (i.up) counts[i.b] = (counts[i.b] || 0) + 1;
+  for (const i of cur) if (i.up && relevant(w.q, i.n)) counts[i.b] = (counts[i.b] || 0) + 1;
   const basis = Object.keys(counts).sort((a, b) => (counts[b] - counts[a]) || (a === "ea" ? 1 : -1))[0] || "ea";
   const hist = histFor(w.q, ex, hide);
   const rated = cur.map((i) => {
     const others = cur.filter((o) => o.m !== i.m && o.b === i.b && o.up).map((o) => o.up);
     // per-item prices only compare against the exact same product; weight/volume prices compare across the whole item
     const past = hist.filter((p) => p[2] === i.b && isPast(p) && (i.b !== "ea" || p[6] === i.norm)).map((p) => p[1]);
-    return { ...i, r: rate(i.up, i.b, past, others, i.sav, w.target, w.tb) };
+    return { ...i, rel: relevant(w.q, i.n), r: rate(i.up, i.b, past, others, i.sav, w.target, w.tb) };
   });
-  rated.sort((a, b) => (a.b === basis ? 0 : 1) - (b.b === basis ? 0 : 1) || (a.up ?? 1e9) - (b.up ?? 1e9));
+  rated.sort((a, b) => (b.rel - a.rel) || (a.b === basis ? 0 : 1) - (b.b === basis ? 0 : 1) || (a.up ?? 1e9) - (b.up ?? 1e9));
   const curIds = new Set(cur.map((i) => i.id));
   const flyerOnly = D.allFlyerItems.filter((i) => okStore(i.m) && !curIds.has(i.id) && matches(w.q, i.n, ex));
   return { cur: rated, basis, hist: hist.filter((p) => p[2] === basis), flyerOnly };
@@ -344,7 +365,7 @@ function bestTier(a) {
   return t;
 }
 function watchCard(w, a) {
-  const best = a.cur.find((i) => i.b === a.basis) || a.cur[0];
+  const best = a.cur.find((i) => i.rel && i.b === a.basis) || a.cur.find((i) => i.rel) || a.cur[0];
   let body;
   if (!best && a.flyerOnly.length) {
     const fo = a.flyerOnly.slice().sort((x, y) => x.p - y.p)[0];
@@ -357,7 +378,7 @@ function watchCard(w, a) {
   } else if (!best) {
     body = `<p class="muted small" style="margin:8px 0 0">Not in any flyer this week — checked every 6 hours.</p>`;
   } else {
-    const pool = a.cur.filter((i) => i.b === best.b && i.r.tier !== "above");
+    const pool = a.cur.filter((i) => i.b === best.b && i.rel === best.rel && i.r.tier !== "above");
     const top = pool.reduce((acc, i) => (TIER_ORDER.indexOf(i.r.tier) > TIER_ORDER.indexOf(acc.r.tier) ? i : acc), best);
     const show = TIER_ORDER.indexOf(top.r.tier) > TIER_ORDER.indexOf(best.r.tier) ? top : best;
     const id = reg(show);
@@ -554,7 +575,8 @@ function viewRestaurants() {
   const groc = (D.rest.stores || []).filter((s) => s.kind === "grocery" && s.promos.length);
   // merge the same restaurant from Uber Eats + DoorDash
   const byBrand = {};
-  for (const s of st) (byBrand[normalize(s.brand)] = byBrand[normalize(s.brand)] || []).push(s);
+  const bkey = (b) => normalize(b).replace(/ /g, "");
+  for (const s of st) (byBrand[bkey(s.brand)] = byBrand[bkey(s.brand)] || []).push(s);
   const withPromo = Object.values(byBrand).filter((g) => g.some((s) => s.promos.length));
   // NEW = a promo that appeared after we started tracking the restaurant, within the last 2 days
   const isNew = (s) => Object.values(s.promo_since || {}).some((t) =>

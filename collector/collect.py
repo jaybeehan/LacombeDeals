@@ -314,7 +314,11 @@ def parse_store_cards(page_html, base):
             elif re.search(r"\b(lacombe|AB|T4L)\b", t, re.I) and re.search(r"\d", t):
                 address = t.rstrip(",")
             elif PROMO_RE.search(t) and len(t) <= 60 and not re.match(r"^\d\.\d", t):
-                promos.append(t)
+                # "$0 delivery fee • 0.6 mi • 22 min" is a standard listing line, not a promo
+                t = " • ".join(x for x in t.split(" • ")
+                               if not re.search(r"^\$0 delivery fee$|\d\s*(mi|km|min)$", x.strip(), re.I))
+                if t:
+                    promos.append(t)
         address = re.sub(r",?\s*NAMER\b", ", AB", address).replace("\n", " ")
         kind = "grocery" if re.search(r"grocery|liquor|alcohol|convenience|pharmacy", cuisine, re.I) else "restaurant"
         out.append({"name": name, "url": key, "cuisine": cuisine, "address": address, "kind": kind,
@@ -325,6 +329,8 @@ def parse_store_cards(page_html, base):
 def brand_of(name):
     b = re.sub(r"\s*\(.*?\)\s*", " ", name).strip()
     b = re.sub(r"\s+canada$", "", b, flags=re.I)
+    if b.isupper() and len(b) > 4:
+        b = b.title()
     return b
 
 

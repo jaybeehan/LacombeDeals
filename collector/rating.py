@@ -63,6 +63,10 @@ def rate(unit_price, basis, past, current_others, savings_pct=None,
         src = f"typical {fmt(ref, basis)} at other stores this week"
     if ref:
         pct = round(100 * (1 - unit_price / ref))
+        if not from_history and abs(pct) > 45:
+            # far off other stores' prices = almost certainly a different product
+            ref, pct = None, None
+    if ref:
         out["pct"], out["reference"] = pct, ref
         if from_history:
             if pct >= 30:

@@ -3,18 +3,29 @@
 POSTAL_CODE = "T4L2N3"          # Lacombe, AB
 TOWN = "Lacombe"
 
-# Stores with a location in Lacombe itself. Everything else Flipp shows for the
-# postal code is labelled "Nearby" (mostly Red Deer). The page lets you filter.
-LACOMBE_STORES = {"Sobeys", "Safeway", "No Frills", "Walmart", "Co-op",
-                  "Shoppers Drug Mart"}
+# Only grocery stores in Lacombe itself (names exactly as Flipp spells them).
+# Lacombe City Mart has no online flyer.
+LACOMBE_STORES = {"Sobeys", "No Frills", "Co-op", "M&M Food Market"}
 
-# Grocery-category flyers to ignore completely
-SKIP_MERCHANTS = {"Real Canadian Liquor Store", "Sobeys & Safeway Liquor", "Pet Valu"}
+# Side flyers from those stores that aren't groceries
+SKIP_FLYER_NAMES = ["pharmacy", "pet", "fur-tastic", "liquor", "home centre", "gas bar"]
 
-# Everything searched every run. Each search returns every matching flyer item
-# from every store, with proper per-lb / per-100 g pricing, and builds price history.
-# Anything you add to your watchlist on the page is matched against these results
-# (plus the full flyer listings), so broad words here = better coverage.
+# Flyer items with these words are household / pharmacy / pet - not groceries
+NON_FOOD_WORDS = [
+    "diaper", "pampers", "huggies", "wipes", "detergent", "tide", "laundry", "fabric softener",
+    "dryer sheet", "bleach", "cleaner", "lysol", "dish soap", "dishwasher", "cascade", "finish ",
+    "paper towel", "bathroom tissue", "toilet paper", "facial tissue", "kleenex", "napkins",
+    "garbage bag", "trash bag", "glad bags", "ziploc", "foil", "plastic wrap", "shampoo",
+    "conditioner", "body wash", "bar soap", "hand soap", "toothpaste", "toothbrush", "mouthwash",
+    "floss", "deodorant", "antiperspirant", "razor", "shaving", "lotion", "sunscreen", "cosmetic",
+    "makeup", "hair colour", "hair color", "tampon", "vitamin",
+    "supplement", "tylenol", "advil", "allergy", "cough", "cold & flu", "medicine", "pharmacy",
+    "dog", "cat", "puppy", "kitten", "dog food", "cat food", "litter", "pet", "treats for", "batteries", "battery",
+    "light bulb", "candle", "air freshener", "febreze", "gift card", "flowers", "bouquet", "cookware", "pc optimum points", "scene+", "bonus points", "banner", "contest", "diapers", "toys", "dawn", "swiffer", "mattress", "earbuds",
+    "motor oil", "decor", "vacuum", "baby bottle", "moisturizer", "beard", "benylin", "profits are",
+    "find inspiration", ".crs", "qr code", "halloween costume",
+ ]
+
 DEPARTMENTS = {
     "Meat & seafood": ["chicken breast", "chicken thighs", "chicken drumsticks", "whole chicken",
                        "chicken wings", "ground beef", "steak", "roast", "stewing beef", "pork chops",
@@ -33,17 +44,12 @@ DEPARTMENTS = {
     "Frozen": ["frozen pizza", "frozen vegetables", "frozen fries", "chicken nuggets", "perogies",
                "lasagna", "frozen fruit"],
     "Drinks": ["coffee", "k-cups", "tea", "juice", "pop", "soft drinks", "water", "sparkling water"],
-    "Household & personal": ["toilet paper", "paper towels", "laundry detergent", "dish soap",
-                             "dishwasher", "garbage bags", "toothpaste", "shampoo", "deodorant",
-                             "diapers"],
 }
 STAPLES = [q for qs in DEPARTMENTS.values() for q in qs]
 DEPT_OF = {q: d for d, qs in DEPARTMENTS.items() for q in qs}
 
 # Categories (Flipp's _L1) that count as groceries for "Top deals"
 FOOD_L1 = {"Food, Beverages & Tobacco"}
-HOUSEHOLD_L2 = {"Household Supplies", "Personal Care", "Paper Products", "Laundry",
-                "Cleaning Supplies", "Health & Beauty"}
 
 # Restaurants
 RFD_FEED = "https://forums.redflagdeals.com/feed/forum/9"

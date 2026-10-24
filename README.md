@@ -7,12 +7,12 @@ Grocery flyer deals and restaurant deals for Lacombe, AB. Refreshed automaticall
 ## What it does
 
 **Groceries**
-- **My items** – add things you buy (chicken breast, butter, coffee…). Each one is matched against every grocery flyer for the area and rated **Stock up / Great deal / Good deal / Regular price / Pricier than usual**, with a 6-month price sparkline. Set a target price (⋯ button) and anything at or under it shows as *Stock up*. Hide wrong matches with *Not this* or exclude words.
+- **My items** – add things you buy (chicken breast, butter, coffee…). Each one is matched against the Lacombe grocery flyers (Sobeys, No Frills, Co-op, M&M Food Market — food only) and rated **Stock up / Great deal / Good deal / Regular price / Pricier than usual**, with a 6-month price sparkline. Set a target price (⋯ button) and anything at or under it shows as *Stock up*. Hide wrong matches with *Not this* or exclude words.
 - **Top deals** – the best-rated deals across all stores, by department.
 - **Compare** – search anything and see every store's price sorted by $/lb, $/L or each.
 - **Flyers** – every grocery flyer, searchable, with a link to the full flyer on Flipp.
 - **List** – tap **+** on any deal to build a shopping list grouped by store; copy it to text.
-- *Lacombe stores only* toggle and per-store choices (most other flyers are Red Deer stores).
+- Choose which of the four stores to include.
 
 **Restaurants** (no delivery apps)
 - Deals posted on RedFlagDeals for chains with a Lacombe location, then other Canadian restaurant deals.
@@ -28,7 +28,7 @@ Each run records every flyer price (store, size, $/kg or $/L) on the `data` bran
 ## Running it
 
 - **Refresh now:** Actions → *Update deals & publish site* → *Run workflow*.
-- **Change what's tracked:** edit `collector/config.py` (postal code, Lacombe store list, searched staples, Lacombe restaurants).
+- **Change what's tracked:** edit `collector/config.py` (postal code, store list, non-food word filter, searched staples, Lacombe restaurants).
 - Code: `collector/` (Python, runs in Actions) and `site/` (static page).
 
 Data sources: Flipp (store flyers) and the RedFlagDeals Hot Deals feed. Always confirm prices in the store's flyer.

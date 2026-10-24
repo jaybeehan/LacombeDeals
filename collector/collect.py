@@ -94,7 +94,10 @@ def fetch_flyers():
         if isinstance(cats, str):
             cats = cats.split(",")
         merchant = merchant_clean(f.get("merchant"))
-        if "Groceries" not in cats or merchant in config.SKIP_MERCHANTS:
+        if merchant not in config.LACOMBE_STORES:
+            continue
+        fname = (f.get("name") or "").lower()
+        if any(w in fname for w in config.SKIP_FLYER_NAMES):
             continue
         if f.get("valid_to") and not is_active(f["valid_to"]):
             continue
@@ -102,10 +105,16 @@ def fetch_flyers():
             "id": f["id"], "merchant": merchant, "name": f.get("name") or "",
             "from": f.get("valid_from"), "to": f.get("valid_to"),
             "thumb": https(f.get("thumbnail_url")), "logo": https(f.get("merchant_logo")),
-            "local": merchant in config.LACOMBE_STORES,
             "cats": [c for c in cats if c not in ("All Flyers", "Groceries")],
         })
     return out
+
+
+_NONFOOD_RE = re.compile(r"(?<![a-z])(" + "|".join(re.escape(w.strip()) for w in config.NON_FOOD_WORDS) + r")(?:s|es)?(?![a-z])", re.I)
+
+
+def is_food_name(name):
+    return not _NONFOOD_RE.search(name or "")
 
 
 def fetch_flyer_items(flyer):
@@ -115,6 +124,8 @@ def fetch_flyer_items(flyer):
     for it in (data or {}).get("items", []):
         name = (it.get("name") or "").strip()
         if not name or name.lower().startswith("banner") or not it.get("price"):
+            continue
+        if not is_food_name(name):
             continue
         try:
             price = float(it["price"])
@@ -145,6 +156,10 @@ def build_item(it, flyer_ids, flyer_by_id):
         return None  # not one of the grocery flyers we follow (e.g. pet store)
     name = (it.get("name") or "").strip()
     if not name:
+        return None
+    if it.get("_L1") and it.get("_L1") not in config.FOOD_L1:
+        return None  # household, pet, pharmacy...
+    if not is_food_name(name):
         return None
     up = unit_price(name, it.get("current_price"), it.get("pre_price_text"),
                     it.get("post_price_text"), it.get("sale_story"))
@@ -206,7 +221,7 @@ def collect_groceries(state_dir, out_dir):
                 group_of.setdefault(it["id"], (q, False))
         time.sleep(0.25)
     log("searched items:", len(items))
-    if len(items) < int(os.environ.get("MIN_ITEMS", "50")):
+    if len(items) < int(os.environ.get("MIN_ITEMS", "30")):
         raise RuntimeError(f"Only {len(items)} items found - Flipp may be failing")
 
     # -------- price history (kept on the data branch)
@@ -219,7 +234,7 @@ def collect_groceries(state_dir, out_dir):
         obs[str(it["id"])] = [it["norm"], it["m"], it["up"], it["b"], day(it["from"]),
                               day(it["to"]), it["price"]]
     cutoff = (NOW - timedelta(days=400)).strftime("%Y-%m-%d")
-    obs = {k: v for k, v in obs.items() if v[5] >= cutoff}
+    obs = {k: v for k, v in obs.items() if v[5] >= cutoff and v[1] in config.LACOMBE_STORES}
     hist["obs"] = obs
     hist["since"] = hist.get("since") or NOW.strftime("%Y-%m-%d")
     save(hist_path, hist)

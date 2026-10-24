@@ -147,7 +147,7 @@ async function loadAll() {
   D.meta = v(0, {}); D.items = v(1, []).filter((i) => active(i.to)); D.flyers = v(2, []).filter((f) => active(f.to));
   D.hist = v(3, { h: {}, merchants: [] }); D.rest = v(4, D.rest); D.flyerItems = v(5, {});
   D.flyerById = Object.fromEntries(D.flyers.map((f) => [String(f.id), f]));
-  D.local = new Set(D.flyers.filter((f) => f.local).map((f) => f.merchant));
+  D.local = new Set(); // every store shown is in Lacombe, so no badge needed
   D.allFlyerItems = [];
   for (const [fid, arr] of Object.entries(D.flyerItems)) {
     const f = D.flyerById[fid];
@@ -157,7 +157,7 @@ async function loadAll() {
   D.searchedIds = new Set(D.items.map((i) => i.id));
 }
 
-const okStore = (m) => !S.off[m] && (!S.localOnly || D.local.has(m));
+const okStore = (m) => !S.off[m];
 
 // ------------------------------------------------------------------ helpers
 function ago(iso) {
@@ -339,7 +339,7 @@ function viewWatch() {
       <button class="btn">Add</button></form>`;
   if (!S.watch.length) {
     html += `<div class="card empty"><p><strong>Add the groceries you buy often.</strong><br>
-      Each one is checked against every Lacombe-area flyer every 6 hours and rated from
+      Each one is checked against the Sobeys, No Frills, Co-op and M&amp;M flyers every 6 hours and rated from
       <em>Regular price</em> up to <em>Stock up</em>, based on its price history.</p></div>`;
   }
   if (sugg.length) html += `<div class="suggest">${sugg.slice(0, 12).map((s) => `<button class="chip sm" data-sugg="${esc(s)}">+ ${esc(s)}</button>`).join("")}</div>`;
@@ -479,7 +479,7 @@ function viewCompare() {
 }
 function showCompare() {
   const out = $("#cres"); if (!out) return;
-  if (compareQ.length < 2) { out.innerHTML = `<div class="card empty">Type anything — it searches every grocery flyer in the area and sorts by price per lb, litre or item.</div>`; return; }
+  if (compareQ.length < 2) { out.innerHTML = `<div class="card empty">Type anything — it searches every Lacombe grocery flyer and sorts by price per lb, litre or item.</div>`; return; }
   const cur = D.items.filter((i) => okStore(i.m) && matches(compareQ, i.n));
   const ids = new Set(cur.map((i) => i.id));
   const fo = D.allFlyerItems.filter((i) => okStore(i.m) && !ids.has(i.id) && matches(compareQ, i.n));
@@ -608,9 +608,9 @@ function viewRestaurants() {
 function storesSheet() {
   const ms = [...new Set(D.flyers.map((f) => f.merchant))].sort((a, b) => (D.local.has(b) - D.local.has(a)) || a.localeCompare(b));
   openSheet(`<div class="sheet-head"><h2 style="margin:0">Stores</h2><button class="iconbtn" data-close>✕</button></div>
-    <p class="small muted">Untick stores you never go to. “Lacombe” stores have a location in town; the rest are mostly in Red Deer.</p>
+    <p class="small muted">Lacombe grocery stores with a weekly flyer. Untick any you don't shop at.</p>
     <div class="card rows">${ms.map((m) => `<label class="row" style="cursor:pointer"><input type="checkbox" class="check" data-store="${esc(m)}" ${S.off[m] ? "" : "checked"}>
-      <div class="info"><span class="store">${esc(m)}</span> ${D.local.has(m) ? `<span class="badge b-local">Lacombe</span>` : `<span class="small muted">nearby</span>`}</div></label>`).join("")}</div>`,
+      <div class="info"><span class="store">${esc(m)}</span> ${D.local.has(m) ? `<span class="badge b-local">Lacombe</span>` : `""`}</div></label>`).join("")}</div>`,
   (el) => {
     $("[data-close]", el).onclick = closeSheet;
     $$("[data-store]", el).forEach((c) => (c.onchange = () => { if (c.checked) delete S.off[c.dataset.store]; else S.off[c.dataset.store] = true; save("off"); render(); }));
@@ -676,8 +676,6 @@ function header() {
 
 $$(".tab").forEach((t) => (t.onclick = () => { S.tab = t.dataset.tab; save("tab"); render(); window.scrollTo(0, 0); }));
 $$(".subnav .chip").forEach((c) => (c.onclick = () => { S.view = c.dataset.view; save("view"); render(); }));
-$("#localOnly").checked = S.localOnly;
-$("#localOnly").onchange = (e) => { S.localOnly = e.target.checked; save("localOnly"); render(); };
 $("#storesBtn").onclick = storesSheet;
 document.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeSheet(); });
 

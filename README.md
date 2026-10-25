@@ -2,33 +2,13 @@
 
 **Site:** https://jaybeehan.github.io/LacombeDeals/
 
-Grocery flyer deals and restaurant deals for Lacombe, AB. Refreshed automatically every 6 hours by GitHub Actions — nothing to run or host.
+This week's grocery deals in Lacombe, built around shopping at Sobeys. Refreshed every 6 hours by GitHub Actions.
 
-## What it does
+- **This week** – the week's flyer at a glance: the single best Sobeys deal, Sobeys' biggest savings, five suppers you can make from what's on sale (with cost and one-tap "Add to list"), items worth buying at another Lacombe store instead, pantry stock-ups, and Lacombe restaurant deals from RedFlagDeals.
+- **Flip** – swipe through the Sobeys flyer (or every store's) one deal at a time: right adds it to your list, left skips.
+- **List** – your shopping list grouped by store, with totals and a Send button to text it.
+- **Search** – anything in every Lacombe flyer, cheapest first by the pound or litre.
 
-**Groceries**
-- **My items** – add things you buy (chicken breast, butter, coffee…). Each one is matched against the Lacombe grocery flyers (Sobeys, No Frills, Co-op, M&M Food Market, Shoppers Drug Mart, Rexall — food and drinks only) and rated **Stock up / Great deal / Good deal / Regular price / Pricier than usual**, with a 6-month price sparkline. Set a target price (⋯ button) and anything at or under it shows as *Stock up*. Hide wrong matches with *Not this* or exclude words.
-- **Top deals** – the best-rated deals across all stores, by department.
-- **Compare** – search anything and see every store's price sorted by $/lb, $/L or each.
-- **Flyers** – every grocery flyer, searchable, with a link to the full flyer on Flipp.
-- **List** – tap **+** on any deal to build a shopping list grouped by store; copy it to text.
-- Choose which stores to include and your usual store (Sobeys by default): its prices are shown first, with a tip when another store is clearly cheaper, and Top deals opens on it.
+Stores: Sobeys, No Frills, Co-op, M&M Food Market, Shoppers Drug Mart and Rexall (food and drinks only). The gear button sets your usual store and which stores to include. Your list and settings are saved in your browser.
 
-**Restaurants** (no delivery apps)
-- Deals posted on RedFlagDeals for chains with a Lacombe location, then other Canadian restaurant deals.
-- Your own notes for weekly specials.
-- Every Lacombe restaurant with a deal count and a "Find deals" search link. Edit the list in `collector/config.py`.
-
-Your items, list, store choices and notes are saved in your browser. Use **Share them to another phone** on the *My items* page to copy them to another device.
-
-## How ratings work
-
-Each run records every flyer price (store, size, $/kg or $/L) on the `data` branch. A price is compared with the median of past prices for the same item: 7%+ below = Good, 18%+ = Great, 30%+ = Stock up, 12%+ above = Pricier than usual. While history is still short, ratings lean on the store's own "% off" and on other stores' prices this week, so they get sharper after a few weeks.
-
-## Running it
-
-- **Refresh now:** Actions → *Update deals & publish site* → *Run workflow*.
-- **Change what's tracked:** edit `collector/config.py` (postal code, store list, non-food word filter, searched staples, Lacombe restaurants).
-- Code: `collector/` (Python, runs in Actions) and `site/` (static page).
-
-Data sources: Flipp (store flyers) and the RedFlagDeals Hot Deals feed. Always confirm prices in the store's flyer.
+Code: `collector/` (Python, runs in Actions; edit `config.py` for stores and searches) and `site/` (the page; supper ideas are in `SUPPERS` in `app.js`).

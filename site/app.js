@@ -1,45 +1,33 @@
-/* Lacombe Deals — static front end. Data is refreshed every 6 h by GitHub Actions.
-   Your watchlist, shopping list, store choices and notes are saved in this browser
-   (use "Share" to copy them to another phone or computer). */
+/* Lacombe Deals — this week's flyers turned into suppers, a swipeable flyer and a list.
+   Data refreshes every 6 h (GitHub Actions). The list and settings live in this browser. */
 "use strict";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const LB = 2.2046226;
-const TIER_ORDER = ["unknown", "above", "regular", "good", "great", "stockup"];
-const LABEL = { stockup: "Stock up", great: "Great deal", good: "Good deal", regular: "Regular price",
-  above: "Pricier than usual", unknown: "No price history yet" };
-const FLIPP_CITY = "https://flipp.com/en-ca/lacombe-ab";
+const money = (v) => `$${Number(v).toFixed(2)}`;
 
-// ------------------------------------------------------------------ storage
-const store = {
-  get(k, d) { try { const v = localStorage.getItem("ld." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem("ld." + k, JSON.stringify(v)); } catch { /* private mode */ } },
+// ------------------------------------------------------------ saved settings
+const saved = {
+  get(k, d) { try { const v = localStorage.getItem("ld2." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("ld2." + k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
 const S = {
-  watch: store.get("watch", null),
-  list: store.get("list", []),
-  off: store.get("off", {}),            // merchant -> true when hidden
-  localOnly: store.get("localOnly", false),
-  notes: store.get("notes", []),
-  view: store.get("view", "watch"),
-  tab: store.get("tab", "groceries"),
-  dept: store.get("dept", ""),
-  home: store.get("home", "Sobeys"),        // usual store, shown first everywhere
-  topScope: store.get("topScope", "home"),
+  tab: saved.get("tab", "week"),
+  home: saved.get("home", "Sobeys"),
+  off: saved.get("off", {}),
+  list: saved.get("list", []),
+  seen: saved.get("seen", {}),        // flip deck: deal id -> "yes" | "no"
+  flipScope: saved.get("flipScope", "home"),
 };
-if (S.watch == null) S.watch = []; // first visit: empty with suggestions
-const save = (k) => store.set(k, S[k]);
+const keep = (k) => saved.set(k, S[k]);
 
-// ------------------------------------------------------------------ text matching (mirrors collector/match.py)
+// ------------------------------------------------------------ matching words to products
 const STOP = new Set(["the", "a", "an", "of", "and", "or", "with", "in", "for", "fresh", "pc", "no", "name"]);
 function normalize(t) {
-  if (!t) return "";
-  t = t.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
-    .replace(/[®™]/g, " ").replace(/&/g, " and ").replace(/[^a-z0-9%.]+/g, " ")
-    .replace(/(?<![0-9])\.|\.(?![0-9])/g, " ");
-  return t.replace(/\s+/g, " ").trim();
+  return (t || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/[®™]/g, " ").replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
 }
 function stem(w) {
   if (w.length > 4 && w.endsWith("ies")) return w.slice(0, -3) + "y";
@@ -49,668 +37,436 @@ function stem(w) {
 }
 const tokens = (t) => normalize(t).split(" ").filter((w) => w && !STOP.has(w)).map(stem);
 const tokCache = new Map();
-function nameTok(name) {
+function tokSet(name) {
   let v = tokCache.get(name);
-  if (!v) {
-    const tk = tokens(name);
-    v = { set: new Set(tk), joined: tk.join(""), nn: " " + normalize(name) + " ", nst: " " + tk.join(" ") + " " };
-    if (tokCache.size > 60000) tokCache.clear();
-    tokCache.set(name, v);
-  }
+  if (!v) { v = new Set(tokens(name)); tokCache.set(name, v); }
   return v;
 }
-function matches(query, name, exclude = []) {
-  const qt = tokens(query);
-  if (!qt.length) return false;
-  const n = nameTok(name);
-  for (const w of qt) {
-    if (n.set.has(w)) continue;
-    // tolerate tiny suffixes only (e.g. "yogurt" ~ "yoghurts" no, "bagel" ~ "bagels" yes); never "butter" ~ "butternut"
-    let ok = false;
-    if (w.length >= 4) for (const x of n.set) if (x.startsWith(w) && x.length - w.length <= 2) { ok = true; break; }
-    if (!ok) return false;
-  }
-  for (let ex of exclude) {
-    ex = (ex || "").trim();
-    if (!ex) continue;
-    if (n.nn.includes(" " + normalize(ex) + " ") || n.nst.includes(" " + tokens(ex).join(" ") + " ")) return false;
-  }
-  return true;
+/** every word of the phrase appears in the name; words starting with "!" must not appear */
+function has(name, phrase) {
+  const set = tokSet(name);
+  const parts = phrase.split(" ");
+  const want = tokens(parts.filter((w) => !w.startsWith("!")).join(" "));
+  const not = tokens(parts.filter((w) => w.startsWith("!")).map((w) => w.slice(1)).join(" "));
+  return want.length > 0 && want.every((w) => set.has(w)) && !not.some((w) => set.has(w));
 }
+const hasAny = (name, phrases) => phrases.some((p) => has(name, p));
 
-// ------------------------------------------------------------------ rating (mirrors collector/rating.py)
-function median(a) { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
-function fmtUnit(v, b) {
-  if (v == null) return "";
-  if (b === "kg") return `$${(v / LB).toFixed(2)}/lb`;
-  if (b === "L") return `$${v.toFixed(2)}/L`;
-  return `$${v.toFixed(2)}`;
-}
-function bump(cur, t) { return TIER_ORDER.indexOf(t) > TIER_ORDER.indexOf(cur) ? t : cur; }
-function rate(up, basis, past, others, sav, target, tbasis) {
-  const out = { tier: "unknown", pct: null, ref: null, why: [] };
-  if (!(up > 0)) {
-    if (sav) { out.tier = sav >= 40 ? "great" : sav >= 20 ? "good" : "regular"; out.why.push(`store says ${sav}% off`); }
-    return out;
-  }
-  past = past.filter((p) => p > 0); others = others.filter((p) => p > 0);
-  let tier = "regular", ref = null, src = "";
-  const fromHist = past.length >= 4;
-  if (fromHist) { ref = median(past); src = `usual ${fmtUnit(ref, basis)}`; }
-  else if ((basis === "kg" || basis === "L") && others.length >= 2) { ref = median([...others, up]); src = `typical ${fmtUnit(ref, basis)} at other stores this week`; }
-  if (ref) {
-    let pct = Math.round(100 * (1 - up / ref));
-    if (!fromHist && Math.abs(pct) > 45) { ref = null; }
-  }
-  if (ref) {
-    const pct = Math.round(100 * (1 - up / ref));
-    out.pct = pct; out.ref = ref;
-    if (fromHist) tier = pct >= 30 ? "stockup" : pct >= 18 ? "great" : pct >= 7 ? "good" : pct <= -12 ? "above" : "regular";
-    else if (pct >= 15) tier = "good";
-    if (pct >= 3) out.why.push(`${pct}% below ${src}`);
-    else if (pct <= -3 && fromHist) out.why.push(`${-pct}% above ${src}`);
-    else if (fromHist) out.why.push(`about the ${src}`);
-    if (past.length >= 6 && up <= Math.min(...past) * 1.001) {
-      out.why.push("lowest price we've seen");
-      if (past.length >= 10) tier = bump(tier, "great");
-    }
-  }
-  if ((basis === "kg" || basis === "L") && others.length >= 2 && up <= Math.min(...others) * 1.001) out.why.push("cheapest store this week");
-  if (sav) {
-    const t = sav >= 40 ? "great" : sav >= 20 ? "good" : null;
-    if (t && tier !== "above") tier = bump(tier, t);
-    out.why.push(`store says ${sav}% off`);
-  }
-  if (target && (!tbasis || tbasis === basis) && up <= target * 1.001) {
-    tier = "stockup"; out.why.unshift(`at or under your target ${fmtUnit(target, basis)}`);
-  }
-  if (ref == null && !sav && tier === "regular") tier = "unknown";
-  out.tier = tier;
-  return out;
-}
-
-// ------------------------------------------------------------------ data
-const D = { meta: {}, items: [], flyers: [], flyerItems: {}, hist: { h: {}, merchants: [] }, rest: { restaurants: [], rfd: [] } };
+// ------------------------------------------------------------ data
+const D = { deals: [], flyers: [], meta: {}, rfd: [] };
 const now = new Date();
-const todayISO = now.toISOString().slice(0, 10);
-const active = (to) => !to || new Date(to) > now;
 
 async function getJSON(path) {
-  // always check with the server for newer data (the browser may otherwise reuse a copy for 10 min)
   const r = await fetch(path, { cache: "no-cache" });
-  if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  if (!r.ok) throw new Error(`${path} (${r.status})`);
   return r.json();
 }
-async function loadAll() {
-  const res = await Promise.allSettled([
+function priceText(it) {
+  if (it.price == null) return "";
+  if (it.multi) return `${it.multi} for ${money(it.price * it.multi)}`;
+  if (it.b === "kg" && /lb/i.test(it.post || "")) return `${money(it.price)}/lb`;
+  if (it.b === "kg" && /100\s*g/i.test(it.post || "")) return `${money(it.price)}/100 g`;
+  return money(it.price);
+}
+async function load() {
+  const [meta, items, flyers, fitems, rest] = await Promise.all([
     getJSON("data/meta.json"), getJSON("data/items.json"), getJSON("data/flyers.json"),
-    getJSON("data/history.json"), getJSON("data/restaurants.json"), getJSON("data/flyer_items.json"),
+    getJSON("data/flyer_items.json"), getJSON("data/restaurants.json").catch(() => ({ rfd: [] })),
   ]);
-  const v = (i, d) => (res[i].status === "fulfilled" ? res[i].value : d);
-  D.meta = v(0, {}); D.items = v(1, []).filter((i) => active(i.to)); D.flyers = v(2, []).filter((f) => active(f.to));
-  D.hist = v(3, { h: {}, merchants: [] }); D.rest = v(4, D.rest); D.flyerItems = v(5, {});
-  D.flyerById = Object.fromEntries(D.flyers.map((f) => [String(f.id), f]));
-  D.local = new Set(); // every store shown is in Lacombe, so no badge needed
-  D.allFlyerItems = [];
-  for (const [fid, arr] of Object.entries(D.flyerItems)) {
-    const f = D.flyerById[fid];
+  D.meta = meta;
+  D.flyers = flyers.filter((f) => new Date(f.to) > now);
+  D.rfd = (rest.rfd || []).filter((p) => p.local);
+  const byFlyer = Object.fromEntries(D.flyers.map((f) => [String(f.id), f]));
+  const searched = new Map(items.map((i) => [i.id, i]));
+  const deals = new Map();
+  // full flyer listings first (flyer order), enriched with unit pricing where we have it
+  for (const [fid, arr] of Object.entries(fitems)) {
+    const f = byFlyer[fid];
     if (!f) continue;
-    for (const it of arr) D.allFlyerItems.push({ ...it, fid: Number(fid), m: f.merchant, to: f.to });
+    arr.forEach((x, idx) => {
+      const s = searched.get(x.id);
+      deals.set(x.id, {
+        id: x.id, m: f.merchant, n: x.n, img: x.img, to: f.to, fid: f.id, order: idx,
+        price: s ? s.price : x.p, ptxt: s ? priceText(s) : money(x.p),
+        b: s ? s.b : "ea", up: s ? s.up : null, sold: s && s.b === "kg" && /lb|100\s*g/i.test(s.post || "") ? s.post : "",
+        pct: (s && s.sav) || x.d || null, dept: s ? s.dept : null,
+      });
+    });
   }
-  D.searchedIds = new Set(D.items.map((i) => i.id));
+  // searched items that weren't in a listing
+  for (const s of items) {
+    if (deals.has(s.id) || !byFlyer[String(s.fid)]) continue;
+    deals.set(s.id, { id: s.id, m: s.m, n: s.n, img: s.img, to: s.to, fid: s.fid, order: 9999, price: s.price,
+      ptxt: priceText(s), b: s.b, up: s.up, sold: s.b === "kg" && /lb|100\s*g/i.test(s.post || "") ? s.post : "", pct: s.sav || null, dept: s.dept });
+  }
+  D.deals = [...deals.values()].filter((d) => d.price > 0 && new Date(d.to) > now);
+  for (const d of D.deals) if (d.pct && (d.pct > 70 || d.pct < 5)) d.pct = null; // flyer data glitches
+  D.stores = [...new Set(D.flyers.map((f) => f.merchant))].sort();
 }
+const ok = (d) => !S.off[d.m];
+const isHome = (d) => d.m === S.home;
 
-const okStore = (m) => !S.off[m];
-
-// ------------------------------------------------------------------ helpers
-function ago(iso) {
-  if (!iso) return "never";
-  const m = Math.round((now - new Date(iso)) / 60000);
-  if (m < 2) return "just now";
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 36) return `${h} h ago`;
-  return `${Math.round(h / 24)} days ago`;
+// ------------------------------------------------------------ the week
+function weekRange() {
+  const hf = D.flyers.find((f) => f.merchant === S.home) || D.flyers[0];
+  if (!hf) return "This week";
+  const a = new Date(hf.from), b = new Date(hf.to);
+  const mon = (d) => d.toLocaleDateString("en-CA", { month: "short" });
+  return mon(a) === mon(b) ? `${mon(a)} ${a.getDate()}–${b.getDate()}` : `${mon(a)} ${a.getDate()} – ${mon(b)} ${b.getDate()}`;
 }
-function until(iso) {
-  if (!iso) return "";
+function endsIn(iso) {
   const d = new Date(iso);
   const days = Math.floor((d - now) / 86400000);
-  const wd = d.toLocaleDateString("en-CA", { weekday: "short" });
   if (days < 1) return "ends today";
-  if (days < 7) return `until ${wd}`;
-  return `until ${d.toLocaleDateString("en-CA", { month: "short", day: "numeric" })}`;
+  return `ends ${d.toLocaleDateString("en-CA", { weekday: "long" })}`;
 }
-function priceText(it) {
-  if (it.price == null) return it.story || "See flyer";
-  const p = `$${Number(it.price).toFixed(2)}`;
-  if (it.multi) return `${it.multi} for $${(it.price * it.multi).toFixed(2)}`;
-  if (it.b === "kg" && /lb/i.test(it.post || "")) return `${p}/lb`;
-  if (it.b === "kg" && /100\s*g/i.test(it.post || "")) return `${p}/100 g`;
-  return p;
-}
-function unitText(it) {
-  if (it.b === "ea" || !it.ud) return "";
-  const pt = priceText(it);
-  return it.ud.split(" · ").filter((u) => u !== pt).join(" · ");
-}
-const badge = (tier) => `<span class="badge t-${tier}">${esc(LABEL[tier])}</span>`;
-const flyerUrl = (fid) => `${FLIPP_CITY}/flyer/${fid}`;
-const itemUrl = (id) => `${FLIPP_CITY}/item/${id}`;
-function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2200); }
-const uid = () => Math.random().toString(36).slice(2, 10);
-function openSheet(html, onMount) {
-  const d = $("#sheet"); $("#sheetBody").innerHTML = html;
-  if (!d.open) d.showModal();
-  onMount && onMount($("#sheetBody"));
-}
-function closeSheet() { $("#sheet").close(); }
-$("#sheet").addEventListener("click", (e) => { if (e.target.id === "sheet") closeSheet(); });
+const byDeal = (a, b) => (b.pct || 0) - (a.pct || 0) || a.order - b.order;
 
-// ------------------------------------------------------------------ watchlist analysis
-function histFor(q, ex, hide = []) {
-  // history point: [startDay, unitPrice, basis, merchantIdx, price, endDay]
+// ------------------------------------------------------------ suppers from the flyer
+// Each supper needs one main from the flyer; sides come from the flyer when they're on sale,
+// otherwise they're listed as "from the cupboard". lb = how much of a by-the-pound main to buy.
+const SUPPERS = [
+  { name: "Pot roast with potatoes and carrots", main: ["roast"], not: ["deli", "sliced", "chicken", "pork", "turkey", "coffee", "peanut", "nut", "potato", "roasted", "vegetable"], lb: 3, sides: [["potato !chip !salad !mashed"], ["carrot !cake"], ["onion !ring"]] },
+  { name: "Steak night", main: ["steak"], not: ["sauce", "spice", "seasoning", "salmon", "cheese", "pie", "tip"], lb: 2, sides: [["potato !chip !salad"], ["mushroom !soup"], ["salad kit", "lettuce"]] },
+  { name: "Tacos", main: ["ground beef", "ground turkey"], not: ["patty", "patties", "burger"], lb: 1.5, sides: [["tortilla !chip", "taco shell", "taco kit"], ["shredded cheese", "cheddar !cracker"], ["lettuce"], ["tomato !sauce !paste !soup !juice !ketchup !canned !diced"], ["salsa"], ["sour cream !chip !dip"]] },
+  { name: "Spaghetti and meat sauce", main: ["ground beef", "italian sausage"], not: ["patty", "patties", "burger"], lb: 1.5, sides: [["spaghetti !sauce", "pasta !sauce !salad"], ["pasta sauce"], ["parmesan"], ["garlic bread", "baguette"]] },
+  { name: "Chili", main: ["ground beef"], not: ["patty", "patties", "burger"], lb: 1.5, sides: [["kidney beans", "beans !green !coffee"], ["canned tomatoes", "diced tomatoes"], ["onion !ring"], ["cheddar !cracker", "shredded cheese"]] },
+  { name: "Burgers and chips", main: ["burger", "patties", "ground beef"], not: ["bun", "seasoning", "plant"], lb: 2, sides: [["hamburger buns", "burger buns", "buns !hot !cinnamon"], ["cheese slices", "singles"], ["potato chips", "chips !chocolate !tortilla"], ["coca cola", "pepsi", "pop !corn !tart"]] },
+  { name: "Chicken stir-fry", main: ["chicken breast", "chicken thigh"], not: ["breaded", "nugget", "strip", "deli", "sliced", "roasted", "cooked", "stuffed", "burger", "soup", "pie"], lb: 2, sides: [["rice !cake !krispie !crispy"], ["peppers !pepperoni !jalapeno", "pepper !pepperoni !black !jalapeno"], ["broccoli"], ["stir fry sauce", "teriyaki sauce", "soy sauce"]] },
+  { name: "Sheet-pan chicken and vegetables", main: ["chicken drumstick", "chicken thigh", "chicken leg", "whole chicken"], not: ["breaded", "nugget", "wing", "cooked", "soup"], lb: 3, sides: [["potato !chip !salad !mashed"], ["carrot !cake"], ["broccoli", "brussels sprouts"]] },
+  { name: "Wings night", main: ["wing"], not: ["sauce"], lb: 2, sides: [["celery"], ["carrot !cake"], ["ranch dressing", "ranch dip"], ["coca cola", "pepsi", "pop !corn !tart"]] },
+  { name: "Pork chops with applesauce", main: ["pork chop"], lb: 2, sides: [["potato !chip !salad"], ["applesauce", "apple sauce", "apple !juice !pie !cider !crisp"], ["corn !flake !chip !pop", "green beans"]] },
+  { name: "Roast pork loin", main: ["pork loin", "pork roast", "pork tenderloin", "pork shoulder"], not: ["chop", "back bacon", "sliced"], lb: 3, sides: [["potato !chip !salad"], ["carrot !cake"], ["apple !juice !pie !cider"]] },
+  { name: "Ribs with corn and coleslaw", main: ["ribs"], not: ["prime rib", "rib eye", "ribeye"], lb: 3, sides: [["bbq sauce", "barbecue sauce"], ["corn !flake !chip !pop !beef"], ["coleslaw", "cabbage"]] },
+  { name: "Salmon with rice and broccoli", main: ["salmon"], not: ["smoked", "canned", "sockeye salmon 142"], lb: 1.5, sides: [["rice !cake !krispie !crispy"], ["broccoli", "asparagus"], ["lemon !juice !tea !pie"]] },
+  { name: "Fish and chips", main: ["fish", "cod", "haddock", "pollock"], not: ["canned", "tuna", "food"], lb: 0, sides: [["fries", "french fries"], ["coleslaw"], ["tartar"]] },
+  { name: "Breakfast for supper", main: ["bacon", "breakfast sausage"], not: ["bit", "chip", "dressing", "kit", "caesar", "salad", "burger"], lb: 0, sides: [["eggs !roll !nog !white !chocolate"], ["bread !crumb !breaded !garlic"], ["hash brown", "potato !chip !salad !mashed"], ["orange juice", "juice !box"]] },
+  { name: "Perogies and sausage", main: ["perogies", "perogy"], lb: 0, sides: [["kielbasa", "farmer sausage", "smoked sausage", "sausage !breakfast !roll"], ["sour cream !chip !dip"], ["onion !ring"]] },
+  { name: "Pizza night", main: ["pizza"], not: ["sauce", "pop", "bites", "rolls", "crust", "pockets", "dough"], lb: 0, sides: [["coca cola", "pepsi", "pop !corn !tart"], ["salad kit", "caesar"], ["ice cream !cone !sandwich"]] },
+  { name: "Soup and sandwiches", main: ["deli", "ham", "turkey breast", "sliced turkey"], not: ["ground", "whole", "bacon"], lb: 0, sides: [["bread !crumb !breaded !garlic"], ["soup !mix"], ["cheese slices", "cheddar !cracker"]] },
+  { name: "Hot dogs and smokies", main: ["hot dog", "wiener", "smokies"], not: ["bun"], lb: 0, sides: [["hot dog buns", "buns !hamburger !cinnamon"], ["potato chips", "chips !chocolate"], ["coca cola", "pepsi", "pop !corn !tart"]] },
+];
+const fuzz = (d) => (d.n.match(/,| or /gi) || []).length; // "A, B or C" multi-product listings
+function pick(cands) {
+  // prefer the usual store, then a single clear product, then the bigger discount, then the lower price
+  return cands.sort((a, b) => (isHome(b) - isHome(a)) || (fuzz(a) - fuzz(b)) || ((b.pct || 0) - (a.pct || 0)) || ((a.up ?? a.price) - (b.up ?? b.price)))[0];
+}
+function planSuppers() {
+  const pool = D.deals.filter(ok);
+  const plans = [];
+  for (const t of SUPPERS) {
+    const mains = pool.filter((d) => hasAny(d.n, t.main) && !hasAny(d.n, t.not || []));
+    if (!mains.length) continue;
+    const main = pick(mains);
+    const sides = t.sides.map((alts) => {
+      const c = pool.filter((d) => d.id !== main.id && hasAny(d.n, alts));
+      return c.length ? { deal: pick(c) } : { need: alts[0] };
+    });
+    const onSale = sides.filter((s) => s.deal).length;
+    const qty = main.sold ? (/100\s*g/i.test(main.sold) ? (t.lb || 1) * 4.536 : t.lb || 1) : 1;
+    const cost = main.price * qty + sides.reduce((s, x) => s + (x.deal ? x.deal.price : 0), 0);
+    const score = (main.pct || 8) + onSale * 6 + (isHome(main) ? 12 : 0);
+    plans.push({ t, main, qty, sides, cost, score });
+  }
+  // best first, one supper per main ingredient
+  plans.sort((a, b) => b.score - a.score);
+  const used = new Set();
+  return plans.filter((p) => !used.has(p.main.id) && used.add(p.main.id)).slice(0, 5);
+}
+
+// ------------------------------------------------------------ cheaper elsewhere (same kind of item, by weight/volume)
+const TRIP = ["chicken breast", "ground beef", "butter", "milk", "eggs", "cheddar", "bacon", "coffee", "bananas", "apples",
+  "potatoes", "pork chops", "salmon", "steak", "roast", "chicken thighs", "yogurt", "bread", "cream", "mozzarella"];
+function worthTheTrip() {
+  if (!S.home || S.off[S.home]) return [];
   const out = [];
-  for (const [norm, pts] of Object.entries(D.hist.h || {})) {
-    if (hide.includes(norm) || !matches(q, norm, ex)) continue;
-    for (const p of pts) out.push([...p, norm]);
+  for (const q of TRIP) {
+    const c = D.deals.filter((d) => ok(d) && d.up && d.b !== "ea" && has(d.n, q));
+    const mine = c.filter(isHome).sort((a, b) => a.up - b.up)[0];
+    const other = c.filter((d) => !isHome(d) && d.b === (mine ? mine.b : d.b)).sort((a, b) => a.up - b.up)[0];
+    if (mine && other && other.up <= mine.up * 0.8) out.push({ q, mine, other, save: Math.round(100 * (1 - other.up / mine.up)) });
   }
-  return out;
+  const seen = new Set();
+  return out.sort((a, b) => b.save - a.save).filter((t) => !seen.has(t.other.id) && seen.add(t.other.id)).slice(0, 5);
 }
-const isPast = (p) => (p[5] || p[0]) < todayISO;
+const perUnit = (d) => (d.b === "kg" ? `${money(d.up / LB)}/lb` : d.b === "L" ? `${money(d.up)}/L` : money(d.price));
 
-// Is this item really the thing, or the word used in another product? ("butter" vs
-// "butter chicken ravioli" or "peanut butter"). Used to pick the headline deal.
-const BEFORE = new Set(["peanut", "almond", "apple", "cocoa", "shea", "body", "cookie", "nut", "cashew", "hazelnut", "garlic", "buffalo", "honey", "chocolate", "coconut", "condensed", "evaporated"]);
-const AFTER = new Set(["chicken", "cookie", "tart", "cup", "sauce", "bar", "cracker", "chip", "squash", "popcorn", "cake", "candy", "croissant", "ravioli", "tart", "pecan", "flavour", "flavor", "seasoning", "dip", "spread", "wrap", "pie", "lettuce", "bean", "milk", "noodle", "soup", "rice", "pasta", "roll", "bun", "sandwich", "pizza", "burger", "stick", "nugget", "strip", "finger", "kiev", "cordon", "bites", "bite", "pop", "pod", "mix", "drink", "beverage"]);
-function relevant(q, name) {
-  const qt = tokens(q), nt = tokens(name);
-  const qs = new Set(qt);
-  for (let i = 0; i < nt.length; i++) {
-    if (nt[i] !== qt[0] && !(qt[0].length >= 4 && nt[i].startsWith(qt[0]))) continue;
-    const prev = nt[i - 1], next = nt[i + qt.length];
-    if (prev && BEFORE.has(prev) && !qs.has(prev)) return false;
-    if (next && AFTER.has(next) && !qs.has(next)) return false;
-    return true;
-  }
+// ------------------------------------------------------------ list
+const inList = (id) => S.list.some((x) => x.id === id);
+function addToList(d, quiet) {
+  if (inList(d.id)) return false;
+  S.list.push({ id: d.id, m: d.m, n: d.n, ptxt: d.ptxt, price: d.price, sold: d.sold || "", img: d.img, to: d.to, qty: 1, done: false });
+  keep("list"); updateCount();
+  if (!quiet) toast(`Added to your ${d.m} list`);
   return true;
 }
-
-function analyseWatch(w) {
-  const ex = w.ex || [], hide = w.hide || [];
-  const cur = D.items.filter((i) => okStore(i.m) && matches(w.q, i.n, ex) && !hide.includes(i.norm));
-  const counts = {};
-  for (const i of cur) if (i.up && relevant(w.q, i.n)) counts[i.b] = (counts[i.b] || 0) + 1;
-  const basis = Object.keys(counts).sort((a, b) => (counts[b] - counts[a]) || (a === "ea" ? 1 : -1))[0] || "ea";
-  const hist = histFor(w.q, ex, hide);
-  const rated = cur.map((i) => {
-    const others = cur.filter((o) => o.m !== i.m && o.b === i.b && o.up).map((o) => o.up);
-    // per-item prices only compare against the exact same product; weight/volume prices compare across the whole item
-    const past = hist.filter((p) => p[2] === i.b && isPast(p) && (i.b !== "ea" || p[6] === i.norm)).map((p) => p[1]);
-    return { ...i, rel: relevant(w.q, i.n), r: rate(i.up, i.b, past, others, i.sav, w.target, w.tb) };
-  });
-  rated.sort((a, b) => (b.rel - a.rel) || (a.b === basis ? 0 : 1) - (b.b === basis ? 0 : 1) || (a.up ?? 1e9) - (b.up ?? 1e9));
-  const curIds = new Set(cur.map((i) => i.id));
-  const flyerOnly = D.allFlyerItems.filter((i) => okStore(i.m) && !curIds.has(i.id) && matches(w.q, i.n, ex));
-  return { cur: rated, basis, hist: hist.filter((p) => p[2] === basis), flyerOnly };
-}
-
-function sparkline(points, basis, curBest) {
-  // weekly lowest price over the last ~6 months
-  const byWeek = {};
-  for (const p of points) {
-    const d = new Date(p[0]); const wk = Math.floor(d / (7 * 86400000));
-    byWeek[wk] = Math.min(byWeek[wk] ?? 1e9, p[1]);
-  }
-  const weeks = Object.keys(byWeek).map(Number).sort((a, b) => a - b).slice(-26);
-  if (weeks.length < 3) return "";
-  const vals = weeks.map((w) => byWeek[w]);
-  const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
-  const W = 300, H = 34, n = vals.length - 1;
-  const pts = vals.map((v, i) => `${(i / n) * (W - 4) + 2},${H - 4 - ((v - lo) / span) * (H - 10)}`).join(" ");
-  const last = pts.split(" ").pop().split(",");
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Lowest weekly price, last ${vals.length} weeks: ${fmtUnit(lo, basis)} to ${fmtUnit(hi, basis)}">
-    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-    <circle cx="${last[0]}" cy="${last[1]}" r="3" fill="var(--accent)"/></svg>
-    <div class="unit">Weekly low, last ${vals.length} weeks: ${fmtUnit(lo, basis)} – ${fmtUnit(hi, basis)}</div>`;
-}
-
-// ------------------------------------------------------------------ list helpers
-const inList = (id) => S.list.some((x) => x.id === id);
-function toggleList(it) {
-  if (inList(it.id)) { S.list = S.list.filter((x) => x.id !== it.id); toast("Removed from list"); }
-  else {
-    S.list.push({ id: it.id, m: it.m, n: it.n, price: it.price ?? it.p ?? null, ptxt: it.ptxt || priceText(it),
-      img: it.img, to: it.to, qty: 1, done: false });
-    toast(`Added to list · ${it.m}`);
-  }
-  save("list"); updateCount();
-}
+function removeFromList(id) { S.list = S.list.filter((x) => x.id !== id); keep("list"); updateCount(); }
 function updateCount() { $("#listCount").textContent = S.list.filter((x) => !x.done).length || ""; }
-const itemIndex = new Map();
-function reg(it) { itemIndex.set(String(it.id), it); return String(it.id); }
-
-function addBtn(id, it) {
-  return `<button class="addbtn ${inList(it.id) ? "on" : ""}" data-add="${id}" aria-label="Add to shopping list">${inList(it.id) ? "✓" : "+"}</button>`;
-}
-function dealRow(it, opts = {}) {
-  const id = reg(it);
-  const r = it.r || { tier: it.tier || "unknown", why: it.why ? [it.why] : [] };
-  const loc = D.local.has(it.m) ? ` <span class="badge b-local">Lacombe</span>` : "";
-  return `<div class="row ${it.m === S.home ? "home" : ""}">
-    ${it.img ? `<img loading="lazy" src="${esc(it.img)}" alt="">` : ""}
-    <div class="info">
-      <div class="store">${esc(it.m)}${loc}</div>
-      <a class="nm" href="${itemUrl(it.id)}" target="_blank" rel="noopener">${esc(it.n)}</a>
-      <div class="pline"><span class="price">${esc(priceText(it))}</span> <span class="unit">${esc([unitText(it), until(it.to)].filter(Boolean).join(" · "))}</span></div>
-      ${opts.noBadge ? "" : `<div class="tline">${badge(r.tier)} <span class="why">${esc(r.why.join(" · "))}</span></div>`}
-      ${opts.extra || ""}
-    </div>
-    ${addBtn(id, it)}
-  </div>`;
-}
-function flyerRow(it) {
-  const id = reg({ ...it, price: it.p, ptxt: `$${it.p.toFixed(2)}` });
-  const loc = D.local.has(it.m) ? ` <span class="badge b-local">Lacombe</span>` : "";
-  return `<div class="row ${it.m === S.home ? "home" : ""}">
-    ${it.img ? `<img loading="lazy" src="${esc(it.img)}" alt="">` : ""}
-    <div class="info"><div class="store">${esc(it.m)}${loc}</div>
-      <a class="nm" href="${itemUrl(it.id)}" target="_blank" rel="noopener">${esc(it.n)}</a>
-      <div class="pline"><span class="price">$${it.p.toFixed(2)}</span> <span class="unit">${esc(until(it.to))}</span> ${it.d ? `<span class="badge t-good">${it.d}% off</span>` : ""}</div></div>
-    ${addBtn(id, it)}
-  </div>`;
+const index = new Map();
+const reg = (d) => { index.set(String(d.id), d); return String(d.id); };
+function addBtn(d) {
+  return `<button class="add ${inList(d.id) ? "on" : ""}" data-add="${reg(d)}">${inList(d.id) ? "On list" : "Add"}</button>`;
 }
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-add]");
   if (!b) return;
-  const it = itemIndex.get(b.dataset.add);
-  if (!it) return;
-  toggleList(it);
-  const on = inList(it.id);
-  $$(`[data-add="${b.dataset.add}"]`).forEach((x) => { x.classList.toggle("on", on); x.textContent = on ? "✓" : "+"; });
+  const d = index.get(b.dataset.add);
+  if (!d) return;
+  if (inList(d.id)) { removeFromList(d.id); toast("Removed from your list"); } else addToList(d);
+  $$(`[data-add="${b.dataset.add}"]`).forEach((x) => { const on = inList(d.id); x.classList.toggle("on", on); x.textContent = on ? "On list" : "Add"; });
 });
 
-// ------------------------------------------------------------------ views: groceries
-const SUGGEST = ["chicken breast", "ground beef", "milk", "eggs", "butter", "cheddar", "bread", "bacon",
-  "coffee", "bananas", "apples", "pork chops", "yogurt", "cheese", "pasta", "chips", "ice cream"];
+// ------------------------------------------------------------ views
+function tagHTML(d, size = "") {
+  const m = d.ptxt.match(/^(\$[\d.]+)(.*)$/);
+  if (m && !d.ptxt.includes(" for ")) return `<span class="tag ${size}">${esc(m[1])}<small>${esc(m[2])}</small></span>`;
+  return `<span class="tag ${size}">${esc(d.ptxt)}</span>`;
+}
+const img = (d, alt = "") => (d.img ? `<img loading="lazy" src="${esc(d.img)}" alt="${esc(alt)}">` : `<span></span>`);
 
-function viewWatch() {
-  const el = $("#gview");
-  const sugg = SUGGEST.filter((s) => !S.watch.some((w) => w.q === s));
-  let html = `<form class="addrow" id="addWatch">
-      <input type="text" id="watchInput" placeholder="Add something you buy, e.g. chicken breast" autocomplete="off" enterkeyhint="done">
-      <button class="btn">Add</button></form>`;
-  if (!S.watch.length) {
-    html += `<div class="card empty"><p><strong>Add the groceries you buy often.</strong><br>
-      Each one is checked against the Sobeys, No Frills, Co-op, M&amp;M, Shoppers and Rexall flyers every 6 hours and rated from
-      <em>Regular price</em> up to <em>Stock up</em>, based on its price history.</p></div>`;
+function viewWeek() {
+  const home = S.home && !S.off[S.home] ? S.home : null;
+  const mine = D.deals.filter((d) => ok(d) && (!home || isHome(d))).sort(byDeal);
+  const hero = mine.find((d) => d.pct) || mine[0];
+  const suppers = planSuppers();
+  const trips = worthTheTrip();
+  const pantryDepts = new Set(["Pantry & snacks", "Frozen", "Drinks", "Bakery & breakfast"]);
+  const pantry = D.deals.filter((d) => ok(d) && pantryDepts.has(d.dept) && (d.pct || 0) >= 25).sort((a, b) => (isHome(b) - isHome(a)) || byDeal(a, b)).slice(0, 12);
+
+  let h = `<h1 class="h-week">${esc(weekRange())}</h1>
+    <p class="sub">${home ? `${esc(home)} flyer, plus ${D.flyers.length - 1} other Lacombe flyers.` : `${D.flyers.length} Lacombe flyers.`} Updated ${esc(ago(D.meta.groceries?.updated))}.</p>`;
+
+  if (hero) {
+    h += `<div class="hero"><div>${tagHTML(hero, "lg")}
+      <p class="what">${esc(hero.n)}</p>
+      <p class="where">${hero.pct ? `<span class="off">${hero.pct}% off</span> ` : ""}${esc(hero.m)}, ${esc(endsIn(hero.to))}</p>
+      <p style="margin:10px 0 0">${addBtn(hero)}</p></div>${img(hero)}</div>`;
   }
-  if (sugg.length) html += `<div class="suggest">${sugg.slice(0, 12).map((s) => `<button class="chip sm" data-sugg="${esc(s)}">+ ${esc(s)}</button>`).join("")}</div>`;
 
-  const analysed = S.watch.map((w) => ({ w, a: analyseWatch(w) }));
-  // best deals first
-  const rank = (x) => { const b = x.a.cur[0]; return b ? TIER_ORDER.indexOf(bestTier(x.a)) : -1; };
-  analysed.sort((x, y) => rank(y) - rank(x));
-  html += `<div class="stack">${analysed.map(({ w, a }) => watchCard(w, a)).join("")}</div>`;
-  if (S.watch.length) html += `<p class="small muted" style="margin-top:14px">Your items are saved on this device.
-    <button class="link small" id="shareBtn">Share them to another phone</button></p>`;
-  el.innerHTML = html;
+  h += `<h2>Biggest deals at ${esc(home || "Lacombe stores")}</h2><p class="sub">Sorted by how much the store says you save.</p>
+    <div class="shelf">${mine.filter((d) => d !== hero).slice(0, 14).map((d) => `<article class="tile">
+      ${d.pct ? `<span class="off">${d.pct}%</span>` : ""}${img(d)}${tagHTML(d, "sm")}<div class="nm">${esc(d.n)}</div>${addBtn(d)}</article>`).join("")}</div>`;
 
-  $("#addWatch").onsubmit = (e) => { e.preventDefault(); addWatch($("#watchInput").value); };
-  $$("[data-sugg]", el).forEach((b) => (b.onclick = () => addWatch(b.dataset.sugg)));
-  $$("[data-edit]", el).forEach((b) => (b.onclick = () => editWatch(b.dataset.edit)));
-  $$("[data-hide]", el).forEach((b) => (b.onclick = () => hideMatch(b.dataset.w, b.dataset.hide)));
-  const sb = $("#shareBtn", el); if (sb) sb.onclick = shareData;
+  h += `<h2>Five suppers from this week's flyer</h2><p class="sub">Built around what's on sale${home ? `, at ${esc(home)} when it can be` : ""}. Add the lot to your list in one tap.</p>`;
+  h += suppers.length ? suppers.map((p, i) => {
+    const mainQty = p.main.sold ? ` <span class="store">about ${p.t.lb || 1} lb</span>` : "";
+    const rows = [`<li>${img(p.main)}<div>${esc(p.main.n)}<span class="store">${esc(p.main.m)}${mainQty}</span></div><span class="p">${esc(p.main.ptxt)}</span></li>`]
+      .concat(p.sides.map((s) => s.deal
+        ? `<li>${img(s.deal)}<div>${esc(s.deal.n)}<span class="store">${esc(s.deal.m)}</span></div><span class="p">${esc(s.deal.ptxt)}</span></li>`
+        : `<li><span></span><span class="have">${esc(s.need[0].toUpperCase() + s.need.slice(1))}, from the cupboard or regular price</span></li>`)).join("");
+    return `<article class="supper"><h3>${esc(p.t.name)}</h3>
+      <p class="cost">Sale items about <b>${money(p.cost)}</b></p>
+      <ul class="ing">${rows}</ul>
+      <div class="row-end"><span class="small muted">${esc(endsIn(p.main.to))}</span><button class="btn" data-supper="${i}">Add to list</button></div></article>`;
+  }).join("") : `<div class="empty">No meats or mains are on sale at your stores this week.</div>`;
+
+  if (trips.length) {
+    h += `<h2>Worth a stop somewhere else</h2><p class="sub">Same kind of item, at least 20% less than ${esc(home)} by the pound or litre.</p>
+      <div class="rows">${trips.map((t) => `<div class="r">${img(t.other)}
+        <div><div class="nm">${esc(t.other.n)}</div><div class="meta">${esc(t.other.m)}: ${esc(perUnit(t.other))} <span class="vs">${esc(home)} ${esc(perUnit(t.mine))}</span></div></div>
+        <div class="side"><span class="off">${t.save}% less</span>${addBtn(t.other)}</div></div>`).join("")}</div>`;
+  }
+
+  if (pantry.length) {
+    h += `<h2>Stock the pantry</h2><p class="sub">Things that keep, at 25% off or more.</p>
+      <div class="shelf">${pantry.map((d) => `<article class="tile"><span class="off">${d.pct}%</span>${img(d)}${tagHTML(d, "sm")}
+        <div class="nm">${esc(d.n)}</div><div class="small muted">${esc(d.m)}</div>${addBtn(d)}</article>`).join("")}</div>`;
+  }
+
+  h += `<h2>Eating out</h2>`;
+  h += D.rfd.length ? `<div class="rows">${D.rfd.slice(0, 8).map((p) => `<a class="r" style="grid-template-columns:1fr;text-decoration:none;color:inherit" href="${esc(p.link)}" target="_blank" rel="noopener">
+      <div><div class="nm"><b>${esc(p.chain)}</b> ${esc(p.title.replace(/^\[[^\]]+\]\s*/, ""))}</div><div class="meta">Posted ${esc(ago(p.published))} on RedFlagDeals</div></div></a>`).join("")}</div>`
+    : `<div class="empty">No deals have been posted for Lacombe restaurants in the last 30 days. This checks RedFlagDeals every 6 hours.</div>`;
+
+  h += `<p class="foot">Prices come from the stores' flyers through Flipp. Check the flyer for sizes and limits before you go.</p>`;
+  $("#view").innerHTML = h;
+  $$("[data-supper]").forEach((b) => (b.onclick = () => {
+    const p = suppers[Number(b.dataset.supper)];
+    const items = [p.main, ...p.sides.filter((s) => s.deal).map((s) => s.deal)];
+    const n = items.filter((d) => addToList(d, true)).length;
+    toast(n ? `Added ${n} item${n > 1 ? "s" : ""} for ${p.t.name.toLowerCase()}` : "Already on your list");
+    render();
+  }));
 }
-function bestTier(a) {
-  let t = "unknown";
-  for (const i of a.cur) if (TIER_ORDER.indexOf(i.r.tier) > TIER_ORDER.indexOf(t) && i.r.tier !== "above") t = i.r.tier;
-  return t;
+
+// ------------------------------------------------------------ flip deck
+let flipUndo = [];
+function deckDeals() {
+  const scope = S.flipScope === "home" && S.home ? (d) => isHome(d) : () => true;
+  return D.deals.filter((d) => ok(d) && scope(d)).sort(byDeal);
 }
-function watchCard(w, a) {
-  const best = a.cur.find((i) => i.rel && i.b === a.basis) || a.cur.find((i) => i.rel) || a.cur[0];
-  let body;
-  if (!best && a.flyerOnly.length) {
-    const fo = a.flyerOnly.slice().sort((x, y) => x.p - y.p)[0];
-    const id = reg({ ...fo, price: fo.p, ptxt: `$${fo.p.toFixed(2)}` });
-    body = `<div class="best">${fo.img ? `<img loading="lazy" src="${esc(fo.img)}" alt="">` : ""}
-      <div class="info"><div>${fo.d ? `<span class="badge t-good">${fo.d}% off</span> ` : ""}<span class="store">${esc(fo.m)}</span>${D.local.has(fo.m) ? ` <span class="badge b-local">Lacombe</span>` : ""}</div>
-      <div class="nm small">${esc(fo.n)}</div><div><span class="price">$${fo.p.toFixed(2)}</span> <span class="unit">${esc(until(fo.to))}</span></div>
-      <div class="why">Lowest flyer price · no price history for this one yet</div></div>
-      <button class="addbtn ${inList(fo.id) ? "on" : ""}" data-add="${id}" aria-label="Add to shopping list">${inList(fo.id) ? "✓" : "+"}</button></div>`;
-  } else if (!best) {
-    body = `<p class="muted small" style="margin:8px 0 0">Not in any flyer this week — checked every 6 hours.</p>`;
+function viewFlip() {
+  const all = deckDeals();
+  const left = all.filter((d) => !S.seen[d.id]);
+  const done = all.length - left.length;
+  const cur = left[0], next = left[1];
+  let h = `<div class="deck-head"><h1>Flip the flyer</h1>
+    ${S.home ? `<div class="seg"><button data-scope="home" class="${S.flipScope === "home" ? "on" : ""}">${esc(S.home)}</button><button data-scope="all" class="${S.flipScope === "home" ? "" : "on"}">All stores</button></div>` : ""}</div>
+    <p class="sub">Swipe right to add it to your list, left to skip. Biggest savings come first.</p>`;
+  if (!cur) {
+    h += `<div class="empty"><b>You've been through all ${all.length} deals.</b> New flyers arrive every Thursday.<p><button class="btn ghost" id="restart">Start over</button></p></div>`;
   } else {
-    const relCur = a.cur.filter((i) => i.rel === best.rel);
-    const homeItems = relCur.filter((i) => i.m === S.home && okStore(i.m))
-      .sort((x, y) => (TIER_ORDER.indexOf(y.r.tier) - TIER_ORDER.indexOf(x.r.tier)) || ((x.up ?? 1e9) - (y.up ?? 1e9)));
-    let show, note = "";
-    if (homeItems.length) {
-      show = homeItems[0];
-      const alt = relCur.filter((i) => i.m !== S.home && i.b === show.b && i.up && show.up && i.up <= show.up * 0.9)
-        .sort((x, y) => x.up - y.up)[0];
-      if (alt) note = `<div class="tip">Cheaper at ${esc(alt.m)}: ${esc(priceText(alt))}${alt.b !== "ea" ? " (" + esc(fmtUnit(alt.up, alt.b)) + ")" : ""} · ${Math.round(100 * (1 - alt.up / show.up))}% less</div>`;
-    } else {
-      const pool = a.cur.filter((i) => i.b === best.b && i.rel === best.rel && i.r.tier !== "above");
-      const top = pool.reduce((acc, i) => (TIER_ORDER.indexOf(i.r.tier) > TIER_ORDER.indexOf(acc.r.tier) ? i : acc), best);
-      show = TIER_ORDER.indexOf(top.r.tier) > TIER_ORDER.indexOf(best.r.tier) ? top : best;
-      if (S.home && okStore(S.home)) note = `<div class="tip muted-tip">Not on sale at ${esc(S.home)} this week</div>`;
-    }
-    const id = reg(show);
-    body = `<div class="best">
-      ${show.img ? `<img loading="lazy" src="${esc(show.img)}" alt="">` : ""}
-      <div class="info">
-        <div>${badge(show.r.tier)} <span class="store">${esc(show.m)}</span>${show.m === S.home ? ` <span class="badge b-local">Your store</span>` : ""}${D.local.has(show.m) ? ` <span class="badge b-local">Lacombe</span>` : ""}</div>
-        <div class="nm small">${esc(show.n)}</div>
-        <div><span class="price">${esc(priceText(show))}</span> <span class="unit">${esc([unitText(show), until(show.to)].filter(Boolean).join(" · "))}</span></div>
-        <div class="why">${esc(show.r.why.join(" · ") || (show === best ? "lowest price this week" : ""))}</div>
-        ${note}
-      </div>
-      <button class="addbtn ${inList(show.id) ? "on" : ""}" data-add="${id}" aria-label="Add to shopping list">${inList(show.id) ? "✓" : "+"}</button>
-    </div>`;
+    const card = (d, cls) => `<div class="card ${cls}" ${cls ? "" : `id="top"`}>
+      <span class="stamp yes">ADD</span><span class="stamp no">SKIP</span>
+      ${d.img ? `<img src="${esc(d.img)}" alt="">` : `<div style="flex:1"></div>`}
+      <div class="store">${esc(d.m)}, ${esc(endsIn(d.to))}</div>
+      <div class="nm">${esc(d.n)}</div>
+      <div class="bottom">${tagHTML(d)}${d.pct ? `<span class="off">${d.pct}% off</span>` : ""}</div></div>`;
+    h += `<div class="deck">${next ? card(next, "under") : ""}${card(cur, "")}</div>
+      <div class="deck-btns"><button class="round no" id="no" aria-label="Skip">✕</button>
+        <button class="round undo" id="undo" aria-label="Undo" ${flipUndo.length ? "" : "disabled"}>↶</button>
+        <button class="round yes" id="yes" aria-label="Add to list">✓</button></div>
+      <div class="progress" aria-label="${done} of ${all.length} seen"><span style="width:${(100 * done) / Math.max(1, all.length)}%"></span></div>
+      <p class="small muted" style="text-align:center">${done} of ${all.length}</p>`;
   }
-  const n = a.cur.length + a.flyerOnly.length;
-  const others = a.cur.map((i) => dealRowWatch(i, w)).join("") + a.flyerOnly.slice(0, 15).map(flyerRow).join("");
-  return `<article class="card watch">
-    <div class="watch-head"><div class="title"><h3>${esc(w.q)}</h3>
-      <div class="small muted">${(() => { const all = [...a.cur, ...a.flyerOnly]; return all.length ? (() => { const n = new Set(all.map((i) => i.m)).size; return `${all.length} in flyers at ${n} store${n === 1 ? "" : "s"}`; })() : ""; })()}${w.target ? ` · target ${fmtUnit(w.target, w.tb)}` : ""}</div></div>
-      <button class="iconbtn" data-edit="${w.id}" aria-label="Edit ${esc(w.q)}">⋯</button></div>
-    ${body}
-    ${sparkline(a.hist, a.basis)}
-    ${n > 1 || a.flyerOnly.length ? `<details class="more"><summary>Compare all ${n} matches</summary><div class="rows">${others}</div>
-      <p class="small muted">Wrong item showing up? Tap <strong>Not this</strong> to hide it, or add “exclude” words with ⋯.</p></details>` : ""}
-  </article>`;
-}
-function dealRowWatch(i, w) {
-  return dealRow(i, { extra: `<button class="link small" data-hide="${esc(i.norm)}" data-w="${w.id}">Not this</button>` });
-}
-function addWatch(q) {
-  q = (q || "").trim().toLowerCase();
-  if (!q) return;
-  if (S.watch.some((w) => w.q === q)) { toast("Already on your list"); return; }
-  S.watch.push({ id: uid(), q, ex: [], hide: [] });
-  save("watch"); render(); toast(`Watching “${q}”`);
-}
-function hideMatch(wid, norm) {
-  const w = S.watch.find((x) => x.id === wid); if (!w) return;
-  w.hide = [...new Set([...(w.hide || []), norm])]; save("watch"); render(); toast("Hidden from this item");
-}
-function editWatch(wid) {
-  const w = S.watch.find((x) => x.id === wid); if (!w) return;
-  const tb = w.tb || "kg";
-  const tval = w.target ? (w.tb === "kg" ? (w.target / LB).toFixed(2) : w.target.toFixed(2)) : "";
-  openSheet(`<div class="sheet-head"><h2 style="margin:0">Edit item</h2><button class="iconbtn" data-close>✕</button></div>
-    <div class="field"><label for="eq">Search words</label><input type="text" id="eq" value="${esc(w.q)}">
-      <div class="small muted">Every word must appear in the flyer item (plurals are fine).</div></div>
-    <div class="field"><label for="eex">Exclude words (comma separated)</label><input type="text" id="eex" value="${esc((w.ex || []).join(", "))}" placeholder="e.g. breaded, nuggets, deli">
-      </div>
-    <div class="field"><label>Alert me when it's at or under</label><div class="inline">
-      <input type="number" id="et" inputmode="decimal" step="0.01" min="0" placeholder="Target price" value="${tval}">
-      <select id="etb"><option value="kg" ${tb === "kg" ? "selected" : ""}>per lb</option><option value="L" ${tb === "L" ? "selected" : ""}>per litre</option><option value="ea" ${tb === "ea" ? "selected" : ""}>each</option></select></div>
-      <div class="small muted">Anything at or under this shows as <strong>Stock up</strong>.</div></div>
-    ${(w.hide || []).length ? `<div class="field"><label>Hidden matches</label><div class="small muted">${w.hide.length} hidden · <button class="link small" id="unhide">Show them again</button></div></div>` : ""}
-    <div class="inline" style="justify-content:space-between;margin-top:16px"><button class="btn danger" id="edel">Remove item</button><button class="btn" id="esave">Save</button></div>`,
-  (el) => {
-    $("[data-close]", el).onclick = closeSheet;
-    const uh = $("#unhide", el); if (uh) uh.onclick = () => { w.hide = []; save("watch"); closeSheet(); render(); };
-    $("#edel", el).onclick = () => { S.watch = S.watch.filter((x) => x !== w); save("watch"); closeSheet(); render(); toast("Removed"); };
-    $("#esave", el).onclick = () => {
-      w.q = $("#eq", el).value.trim().toLowerCase() || w.q;
-      w.ex = $("#eex", el).value.split(",").map((s) => s.trim()).filter(Boolean);
-      const t = parseFloat($("#et", el).value); w.tb = $("#etb", el).value;
-      w.target = t > 0 ? (w.tb === "kg" ? t * LB : t) : null;
-      save("watch"); closeSheet(); render(); toast("Saved");
-    };
-  });
-}
-
-function viewTop() {
-  const el = $("#gview");
-  const depts = [...new Set(D.items.map((i) => i.dept).filter(Boolean))];
-  const order = ["Meat & seafood", "Dairy & eggs", "Produce", "Bakery & breakfast", "Pantry & snacks", "Frozen", "Drinks", "Household & personal"];
-  depts.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-  const homeOnly = S.topScope === "home" && S.home;
-  let list = D.items.filter((i) => okStore(i.m) && (!homeOnly || i.m === S.home) && (!S.dept || i.dept === S.dept) &&
-    (["stockup", "great", "good"].includes(i.tier)));
-  const seen = new Set();
-  list = list.filter((i) => { const k = i.m + "|" + i.norm; if (seen.has(k)) return false; seen.add(k); return true; });
-  list.sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier) || ((b.pct ?? b.sav ?? 0) - (a.pct ?? a.sav ?? 0)));
-  const since = D.hist.since;
-  const weeks = since ? Math.max(0, Math.floor((now - new Date(since)) / (7 * 86400000))) : 0;
-  el.innerHTML = `${S.home ? `<div class="subnav" style="padding-top:0"><button class="chip sm ${homeOnly ? "active" : ""}" data-scope="home">${esc(S.home)}</button><button class="chip sm ${homeOnly ? "" : "active"}" data-scope="all">All stores</button></div>` : ""}
-    <div class="filters"><select id="dept" aria-label="Department"><option value="">All departments</option>
-      ${depts.map((d) => `<option ${S.dept === d ? "selected" : ""}>${esc(d)}</option>`).join("")}</select></div>
-    ${weeks < 4 ? `<div class="warn">Price history started ${esc(since || "today")}. Until a few weeks are collected, ratings lean on store “% off” claims and other stores' prices, so expect fewer <strong>Stock up</strong> tags at first.</div>` : ""}
-    <div class="legend">${["stockup", "great", "good"].map(badge).join("")}</div>
-    ${list.length ? `<div class="card rows">${list.slice(0, 150).map((i) => dealRow({ ...i, r: { tier: i.tier, why: i.why ? [i.why] : [] } })).join("")}</div>`
-      : `<div class="card empty">No standout deals ${homeOnly ? "at " + esc(S.home) : "for these stores"} right now.</div>`}`;
-  $$("[data-scope]", el).forEach((b) => (b.onclick = () => { S.topScope = b.dataset.scope; save("topScope"); render(); }));
-  $("#dept").onchange = (e) => { S.dept = e.target.value; save("dept"); render(); };
-}
-
-let compareQ = "";
-function viewCompare() {
-  const el = $("#gview");
-  el.innerHTML = `<form class="addrow" id="cmp"><input type="search" id="cq" placeholder="Compare prices, e.g. butter" value="${esc(compareQ)}" enterkeyhint="search"><button class="btn">Go</button></form><div id="cres"></div>`;
-  $("#cmp").onsubmit = (e) => { e.preventDefault(); compareQ = $("#cq").value.trim(); showCompare(); };
-  $("#cq").oninput = () => { compareQ = $("#cq").value.trim(); clearTimeout(viewCompare._t); viewCompare._t = setTimeout(showCompare, 250); };
-  showCompare();
-}
-function showCompare() {
-  const out = $("#cres"); if (!out) return;
-  if (compareQ.length < 2) { out.innerHTML = `<div class="card empty">Type anything — it searches every Lacombe grocery flyer and sorts by price per lb, litre or item.</div>`; return; }
-  const cur = D.items.filter((i) => okStore(i.m) && matches(compareQ, i.n));
-  const ids = new Set(cur.map((i) => i.id));
-  const fo = D.allFlyerItems.filter((i) => okStore(i.m) && !ids.has(i.id) && matches(compareQ, i.n));
-  const groups = { kg: [], L: [], ea: [] };
-  for (const i of cur) (groups[i.b] || groups.ea).push(i);
-  const names = { kg: "Priced by weight (per lb)", L: "Priced by volume (per litre)", ea: "Priced per item" };
-  let html = "";
-  for (const b of ["kg", "L", "ea"]) {
-    const g = groups[b]; if (!g.length) continue;
-    g.sort((x, y) => (x.up ?? 1e9) - (y.up ?? 1e9));
-    html += `<h2>${names[b]}</h2><div class="card rows">${g.map((i) => {
-      const others = g.filter((o) => o.m !== i.m && o.up).map((o) => o.up);
-      const past = (D.hist.h[i.norm] || []).filter((p) => p[2] === i.b && isPast(p)).map((p) => p[1]);
-      return dealRow({ ...i, r: rate(i.up, i.b, past, others, i.sav) });
-    }).join("")}</div>`;
-  }
-  if (fo.length) html += `<h2>Also in flyers</h2><div class="card rows">${fo.sort((a, b) => a.p - b.p).slice(0, 60).map(flyerRow).join("")}</div>`;
-  out.innerHTML = html || `<div class="card empty">Nothing matching “${esc(compareQ)}” in this week's flyers.</div>`;
-}
-
-function viewFlyers() {
-  const el = $("#gview");
-  const fl = D.flyers.filter((f) => okStore(f.merchant)).sort((a, b) => (b.local - a.local) || a.merchant.localeCompare(b.merchant));
-  el.innerHTML = fl.length ? `<div class="grid">${fl.map((f) => `<button class="flyer" data-fly="${f.id}">
-      <div class="thumb" style="background-image:url('${esc(f.thumb)}')"></div>
-      <div class="meta"><div class="merchant">${esc(f.merchant)}</div>
-      <div class="small muted">${esc(f.name.length > 28 ? "Weekly flyer" : f.name)}</div>
-      <div class="small">${f.local ? `<span class="badge b-local">Lacombe</span> ` : ""}${esc(until(f.to))}</div></div></button>`).join("")}</div>`
-    : `<div class="card empty">No flyers for the selected stores.</div>`;
-  $$("[data-fly]", el).forEach((b) => (b.onclick = () => openFlyer(b.dataset.fly)));
-}
-function openFlyer(fid) {
-  const f = D.flyerById[fid];
-  const items = (D.flyerItems[fid] || []).map((i) => ({ ...i, fid: Number(fid), m: f.merchant, to: f.to }));
-  const draw = (q, sort) => {
-    let l = q ? items.filter((i) => matches(q, i.n)) : items.slice();
-    if (sort === "disc") l.sort((a, b) => (b.d || 0) - (a.d || 0));
-    if (sort === "price") l.sort((a, b) => a.p - b.p);
-    $("#flist").innerHTML = l.length ? l.slice(0, 300).map(flyerRow).join("") : `<div class="empty">No items</div>`;
+  $("#view").innerHTML = h;
+  $$("[data-scope]").forEach((b) => (b.onclick = () => { S.flipScope = b.dataset.scope; keep("flipScope"); flipUndo = []; render(); }));
+  const rs = $("#restart");
+  if (rs) rs.onclick = () => { for (const d of all) delete S.seen[d.id]; keep("seen"); render(); };
+  if (!cur) return;
+  const top = $("#top");
+  const decide = (yes) => {
+    S.seen[cur.id] = yes ? "yes" : "no"; keep("seen");
+    if (yes) addToList(cur, true);
+    flipUndo.push(cur.id);
+    top.classList.add("fly");
+    top.style.transform = `translateX(${yes ? 140 : -140}%) rotate(${yes ? 18 : -18}deg)`;
+    top.style.opacity = "0";
+    setTimeout(render, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 260);
   };
-  openSheet(`<div class="sheet-head"><div><h2 style="margin:0">${esc(f.merchant)}</h2><div class="small muted">${esc(f.name)} · ${esc(until(f.to))}</div></div><button class="iconbtn" data-close>✕</button></div>
-    <p class="small"><a href="${flyerUrl(f.id)}" target="_blank" rel="noopener">Open the full flyer on Flipp ↗</a></p>
-    <div class="filters"><input type="search" id="fq" placeholder="Search this flyer"><select id="fs" style="flex:0 0 130px"><option value="">Flyer order</option><option value="disc">Biggest % off</option><option value="price">Lowest price</option></select></div>
-    <div class="card rows" id="flist"></div>`, (el) => {
-    $("[data-close]", el).onclick = closeSheet;
-    const up = () => draw($("#fq", el).value.trim(), $("#fs", el).value);
-    $("#fq", el).oninput = up; $("#fs", el).onchange = up; up();
+  $("#yes").onclick = () => decide(true);
+  $("#no").onclick = () => decide(false);
+  $("#undo").onclick = () => {
+    const id = flipUndo.pop(); if (id == null) return;
+    if (S.seen[id] === "yes") removeFromList(id);
+    delete S.seen[id]; keep("seen"); render();
+  };
+  // drag to swipe
+  let x0 = null, dx = 0;
+  const yes = $(".stamp.yes", top), no = $(".stamp.no", top);
+  top.addEventListener("pointerdown", (e) => { x0 = e.clientX; dx = 0; top.classList.remove("back"); top.setPointerCapture(e.pointerId); });
+  top.addEventListener("pointermove", (e) => {
+    if (x0 == null) return;
+    dx = e.clientX - x0;
+    top.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`;
+    yes.style.opacity = Math.max(0, Math.min(1, dx / 90));
+    no.style.opacity = Math.max(0, Math.min(1, -dx / 90));
   });
+  const end = () => {
+    if (x0 == null) return;
+    x0 = null;
+    if (Math.abs(dx) > 90) decide(dx > 0);
+    else { top.classList.add("back"); top.style.transform = ""; yes.style.opacity = no.style.opacity = 0; }
+  };
+  top.addEventListener("pointerup", end);
+  top.addEventListener("pointercancel", end);
 }
 
+// ------------------------------------------------------------ list view
 function viewList() {
-  const el = $("#gview");
-  if (!S.list.length) { el.innerHTML = `<div class="card empty">Tap <strong>+</strong> on any deal to add it here. Your list is grouped by store.</div>`; return; }
+  // drop items whose sale has ended more than a day ago
+  if (!S.list.length) {
+    $("#view").innerHTML = `<h1 class="h-week" style="font-size:44px">Your list</h1>
+      <div class="empty"><b>Nothing on your list yet.</b> Tap <b>Add</b> on any deal, add a whole supper from <b>This week</b>, or swipe right in <b>Flip</b>.</div>`;
+    return;
+  }
   const by = {};
   for (const x of S.list) (by[x.m] = by[x.m] || []).push(x);
-  let total = 0;
-  const html = Object.entries(by).sort().map(([m, xs]) => {
+  const stores = Object.keys(by).sort((a, b) => (b === S.home) - (a === S.home) || a.localeCompare(b));
+  let total = 0, weighed = 0;
+  let h = `<h1 class="h-week" style="font-size:44px">Your list</h1>`;
+  for (const m of stores) {
     let sub = 0;
-    const rows = xs.map((x) => {
-      if (x.price && !/lb|100 g/.test(x.ptxt || "")) sub += x.price * x.qty;
-      const exp = x.to && !active(x.to);
-      return `<div class="row ${x.done ? "done" : ""}">
-        <input type="checkbox" class="check" data-done="${esc(x.id)}" ${x.done ? "checked" : ""} aria-label="Got it">
-        <div class="info"><div class="nm">${esc(x.n)}</div><div class="small muted">${esc(x.ptxt || "")}${exp ? " · <strong>sale ended</strong>" : x.to ? " · " + esc(until(x.to)) : ""}</div></div>
-        <div class="qty"><button data-q="${esc(x.id)}" data-d="-1" aria-label="Less">−</button><span>${x.qty}</span><button data-q="${esc(x.id)}" data-d="1" aria-label="More">+</button></div>
-      </div>`;
+    const rows = by[m].map((x) => {
+      if (x.sold) weighed++; else if (x.price) sub += x.price * x.qty;
+      const ended = x.to && new Date(x.to) < now;
+      return `<div class="r listrow ${x.done ? "done" : ""}">
+        <input type="checkbox" class="chk" data-done="${esc(x.id)}" ${x.done ? "checked" : ""} aria-label="Got ${esc(x.n)}">
+        <div><div class="nm">${esc(x.n)}</div><div class="meta">${esc(x.ptxt)}${ended ? ", sale has ended" : ""}</div></div>
+        <div class="qty"><button data-q="${esc(x.id)}" data-d="-1" aria-label="One less">−</button>${x.qty}<button data-q="${esc(x.id)}" data-d="1" aria-label="One more">+</button></div></div>`;
     }).join("");
     total += sub;
-    return `<div class="card listgroup"><h3><span>${esc(m)}</span><span class="muted small">${sub ? "≈ $" + sub.toFixed(2) : ""}</span></h3><div class="rows">${rows}</div></div>`;
-  }).join("");
-  el.innerHTML = `<div class="stack">${html}</div>
-    <p class="small muted">Estimated total ≈ $${total.toFixed(2)} (items sold by weight not included)</p>
-    <div class="inline"><button class="btn ghost" id="copyList">Copy list</button><button class="btn ghost" id="clearDone">Clear checked</button><button class="btn danger" id="clearAll">Clear all</button></div>`;
-  $$("[data-done]", el).forEach((c) => (c.onchange = () => { const x = S.list.find((y) => String(y.id) === c.dataset.done); x.done = c.checked; save("list"); updateCount(); viewList(); }));
-  $$("[data-q]", el).forEach((b) => (b.onclick = () => {
+    h += `<div class="store-h">${esc(m)}<span>${sub ? money(sub) : ""}</span></div><div class="rows">${rows}</div>`;
+  }
+  h += `<p class="total">About ${money(total)}</p><p class="small muted">${weighed ? `Plus ${weighed} item${weighed > 1 ? "s" : ""} priced by weight.` : ""}</p>
+    <div class="actions"><button class="btn" id="share">Send list</button><button class="btn ghost" id="clearDone">Clear checked</button><button class="btn ghost" id="clearAll">Clear all</button></div>`;
+  $("#view").innerHTML = h;
+  $$("[data-done]").forEach((c) => (c.onchange = () => { const x = S.list.find((y) => String(y.id) === c.dataset.done); x.done = c.checked; keep("list"); updateCount(); viewList(); }));
+  $$("[data-q]").forEach((b) => (b.onclick = () => {
     const x = S.list.find((y) => String(y.id) === b.dataset.q); x.qty += Number(b.dataset.d);
     if (x.qty < 1) S.list = S.list.filter((y) => y !== x);
-    save("list"); updateCount(); viewList();
+    keep("list"); updateCount(); viewList();
   }));
-  $("#clearDone").onclick = () => { S.list = S.list.filter((x) => !x.done); save("list"); updateCount(); viewList(); };
-  $("#clearAll").onclick = () => { if (confirm("Clear the whole list?")) { S.list = []; save("list"); updateCount(); viewList(); } };
-  $("#copyList").onclick = async () => {
-    const txt = Object.entries(by).sort().map(([m, xs]) => `${m}\n` + xs.filter((x) => !x.done).map((x) => `- ${x.qty > 1 ? x.qty + " × " : ""}${x.n} (${x.ptxt})`).join("\n")).join("\n\n");
-    try { await navigator.clipboard.writeText(txt); toast("List copied — paste it in a text"); }
-    catch { openSheet(`<div class="sheet-head"><h2 style="margin:0">Your list</h2><button class="iconbtn" data-close>✕</button></div><textarea rows="14">${esc(txt)}</textarea>`, (e) => ($("[data-close]", e).onclick = closeSheet)); }
+  $("#clearDone").onclick = () => { S.list = S.list.filter((x) => !x.done); keep("list"); updateCount(); viewList(); };
+  $("#clearAll").onclick = () => { if (confirm("Clear the whole list?")) { S.list = []; keep("list"); updateCount(); viewList(); } };
+  $("#share").onclick = async () => {
+    const text = stores.map((m) => `${m}\n` + by[m].filter((x) => !x.done).map((x) => `- ${x.qty > 1 ? x.qty + " x " : ""}${x.n} (${x.ptxt})`).join("\n")).join("\n\n");
+    if (navigator.share) { try { await navigator.share({ title: "Grocery list", text }); return; } catch { /* cancelled */ } }
+    try { await navigator.clipboard.writeText(text); toast("List copied, paste it into a text"); } catch { prompt("Copy your list", text); }
   };
 }
 
-// ------------------------------------------------------------------ view: restaurants
-function viewRestaurants() {
-  const el = $("#rview");
-  const rfd = D.rest.rfd || [];
-  const local = rfd.filter((p) => p.local);
-  const other = rfd.filter((p) => !p.local);
-  const rfdList = (arr, empty) => arr.length ? `<div class="card">${arr.slice(0, 40).map((p) => `<a class="rfd" href="${esc(p.link)}" target="_blank" rel="noopener">
-      <div class="t">${esc(p.title)}</div><div class="small muted">${esc(p.chain ? p.chain + " · " : "")}posted ${esc(ago(p.published))}</div></a>`).join("")}</div>`
-    : `<div class="card empty small">${empty}</div>`;
-  const rests = (D.rest.restaurants || []).slice().sort((a, b) => a.name.localeCompare(b.name));
-  const gsearch = (n) => `https://www.google.com/search?tbs=qdr:m&q=${encodeURIComponent(`"${n}" deal OR special OR promo Alberta`)}`;
-  const dealCount = (n) => local.filter((p) => normalize(p.chain).replace(/ /g, "") === normalize(n).replace(/ /g, "")).length;
-
-  el.innerHTML = `
-    <h2 style="margin-top:4px">Deals at Lacombe restaurants</h2>
-    ${rfdList(local, "No deals posted for Lacombe restaurants in the last 30 days — checked every 6 hours.")}
-    <p class="small muted">Deals spotted on RedFlagDeals for chains with a Lacombe location (delivery-app offers are left out). Some are app-only or “participating locations” — check before you go.</p>
-
-    <h2>My restaurant notes</h2>
-    <form class="addrow" id="noteForm"><input type="text" id="noteText" placeholder="e.g. Boston Pizza – Tuesday kids eat free"><button class="btn">Add</button></form>
-    ${S.notes.length ? `<div class="card">${S.notes.map((n) => `<div class="note"><div style="flex:1">${esc(n.text)}</div><button class="iconbtn" data-dnote="${n.id}" aria-label="Delete note">✕</button></div>`).join("")}</div>`
-      : `<p class="small muted">Keep track of weekly specials you know about (wing night, kids eat free…).</p>`}
-
-    <h2>Lacombe restaurants</h2>
-    <div class="card rows">${rests.map((r) => {
-      const n = dealCount(r.name);
-      return `<div class="row"><div class="info"><div class="store">${esc(r.name)} ${n ? `<span class="badge t-great">${n} deal${n > 1 ? "s" : ""}</span>` : ""}</div>
-        <div class="small muted">${esc(r.type || "")}${r.app ? " · best deals are in their app" : ""}</div></div>
-        <div class="side small"><a href="${gsearch(r.name)}" target="_blank" rel="noopener">Find deals ↗</a></div></div>`;
-    }).join("")}</div>
-
-    <details class="more"><summary>Other restaurant deals in Canada (${other.length})</summary>${rfdList(other, "Nothing in the last 30 days.")}</details>`;
-  $("#noteForm").onsubmit = (e) => { e.preventDefault(); const t = $("#noteText").value.trim(); if (!t) return; S.notes.push({ id: uid(), text: t }); save("notes"); viewRestaurants(); };
-  $$("[data-dnote]", el).forEach((b) => (b.onclick = () => { S.notes = S.notes.filter((n) => n.id !== b.dataset.dnote); save("notes"); viewRestaurants(); }));
+// ------------------------------------------------------------ search
+let q = "";
+function viewSearch() {
+  $("#view").innerHTML = `<div class="searchbox"><input type="search" id="q" placeholder="Search every Lacombe flyer, e.g. butter" value="${esc(q)}" autocomplete="off" enterkeyhint="search"></div><div id="results"></div>`;
+  const input = $("#q");
+  input.oninput = () => { q = input.value; clearTimeout(viewSearch.t); viewSearch.t = setTimeout(results, 200); };
+  results();
+  if (!q) setTimeout(() => input.focus(), 50);
+}
+function results() {
+  const out = $("#results");
+  if (q.trim().length < 2) {
+    out.innerHTML = `<div class="empty">Type a few letters. Results from every store are listed cheapest first, by the pound or litre when the flyer says.</div>
+      <h2>Full flyers</h2><div class="rows">${D.flyers.filter((f) => !S.off[f.merchant]).map((f) => `<a class="r" style="grid-template-columns:1fr auto;text-decoration:none;color:inherit" href="https://flipp.com/en-ca/lacombe-ab/flyer/${f.id}" target="_blank" rel="noopener">
+        <div><div class="nm"><b>${esc(f.merchant)}</b></div><div class="meta">${esc(endsIn(f.to))}</div></div><span class="small">Open on Flipp</span></a>`).join("")}</div>`;
+    return;
+  }
+  const hits = D.deals.filter((d) => ok(d) && has(d.n, q));
+  hits.sort((a, b) => (a.b === b.b && a.up && b.up ? a.up - b.up : (a.b === "ea") - (b.b === "ea")) || a.price - b.price);
+  out.innerHTML = hits.length ? `<div class="rows">${hits.slice(0, 80).map((d) => `<div class="r ${isHome(d) ? "mine" : ""}">${img(d)}
+      <div><div class="nm">${esc(d.n)}</div><div class="meta">${esc(d.m)}${d.b !== "ea" && d.up ? `, ${esc(perUnit(d))}` : ""}</div></div>
+      <div class="side">${tagHTML(d, "sm")}${addBtn(d)}</div></div>`).join("")}</div>`
+    : `<div class="empty">Nothing matching "${esc(q)}" is on sale at your stores this week.</div>`;
 }
 
-// ------------------------------------------------------------------ stores sheet
-function storesSheet() {
-  const ms = [...new Set(D.flyers.map((f) => f.merchant))].sort((a, b) => (D.local.has(b) - D.local.has(a)) || a.localeCompare(b));
-  openSheet(`<div class="sheet-head"><h2 style="margin:0">Stores</h2><button class="iconbtn" data-close>✕</button></div>
-    <div class="field"><label for="homeSel">Your usual store (shown first everywhere)</label>
-      <select id="homeSel"><option value="">None</option>${ms.map((m) => `<option ${S.home === m ? "selected" : ""}>${esc(m)}</option>`).join("")}</select></div>
-    <p class="small muted">Lacombe stores with a weekly flyer (food and drinks only). Untick any you don't shop at.</p>
-    <div class="card rows">${ms.map((m) => `<label class="row" style="cursor:pointer"><input type="checkbox" class="check" data-store="${esc(m)}" ${S.off[m] ? "" : "checked"}>
-      <div class="info"><span class="store">${esc(m)}</span></div></label>`).join("")}</div>`,
-  (el) => {
-    $("[data-close]", el).onclick = closeSheet;
-    $("#homeSel", el).onchange = (e) => { S.home = e.target.value; save("home"); storebar(); render(); };
-    $$("[data-store]", el).forEach((c) => (c.onchange = () => { if (c.checked) delete S.off[c.dataset.store]; else S.off[c.dataset.store] = true; save("off"); render(); }));
-  });
+// ------------------------------------------------------------ settings
+function openSettings() {
+  $("#sheetBody").innerHTML = `<div class="sheet-h"><h2>Your stores</h2><button class="x" data-close aria-label="Close">×</button></div>
+    <div class="field"><label for="home">Where you usually shop</label>
+      <select id="home"><option value="">No favourite</option>${D.stores.map((m) => `<option ${m === S.home ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>
+      <p class="small muted">This store's deals come first everywhere.</p></div>
+    <div class="field checks"><label style="border:0;font-weight:700;padding-top:0">Stores to include</label>
+      ${D.stores.map((m) => `<label><input type="checkbox" class="chk" data-store="${esc(m)}" ${S.off[m] ? "" : "checked"}>${esc(m)}</label>`).join("")}</div>
+    <p class="small muted">Lacombe stores with an online flyer, food and drinks only.</p>`;
+  $("#sheet").showModal();
+  $("#home").onchange = (e) => { S.home = e.target.value; keep("home"); render(); };
+  $$("[data-store]").forEach((c) => (c.onchange = () => { if (c.checked) delete S.off[c.dataset.store]; else S.off[c.dataset.store] = true; keep("off"); render(); }));
 }
+document.addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target.id === "sheet") $("#sheet").close(); });
 
-// ------------------------------------------------------------------ sharing between devices
-function shareData() {
-  const payload = { watch: S.watch, off: S.off, notes: S.notes, home: S.home };
-  const code = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-  const url = `${location.origin}${location.pathname}#import=${code}`;
-  openSheet(`<div class="sheet-head"><h2 style="margin:0">Share your items</h2><button class="iconbtn" data-close>✕</button></div>
-    <p class="small">Open this link on the other phone or computer to copy your watched items, store choices and notes there.</p>
-    <textarea rows="4" readonly>${esc(url)}</textarea>
-    <div class="inline" style="margin-top:10px"><button class="btn" id="cp">Copy link</button>${navigator.share ? `<button class="btn ghost" id="sh">Share…</button>` : ""}</div>`,
-  (el) => {
-    $("[data-close]", el).onclick = closeSheet;
-    $("#cp", el).onclick = async () => { try { await navigator.clipboard.writeText(url); toast("Link copied"); } catch { $("textarea", el).select(); } };
-    const sh = $("#sh", el); if (sh) sh.onclick = () => navigator.share({ title: "Lacombe Deals – my items", url }).catch(() => {});
-  });
+// ------------------------------------------------------------ shell
+function ago(iso) {
+  if (!iso) return "recently";
+  const m = Math.round((now - new Date(iso)) / 60000);
+  if (m < 2) return "just now";
+  if (m < 60) return `${m} minutes ago`;
+  const h = Math.round(m / 60);
+  return h < 36 ? `${h} hour${h > 1 ? "s" : ""} ago` : `${Math.round(h / 24)} days ago`;
 }
-function checkImport() {
-  const m = location.hash.match(/#import=([^&]+)/);
-  if (!m) return;
-  history.replaceState(null, "", location.pathname);
-  try {
-    const p = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
-    const n = (p.watch || []).filter((w) => !S.watch.some((x) => x.q === w.q)).length;
-    if (!confirm(`Add ${n} watched item${n === 1 ? "" : "s"} and the shared store choices to this device?`)) return;
-    for (const w of p.watch || []) if (!S.watch.some((x) => x.q === w.q)) S.watch.push({ ...w, id: uid() });
-    for (const nt of p.notes || []) if (!S.notes.some((x) => x.text === nt.text)) S.notes.push({ ...nt, id: uid() });
-    S.off = { ...S.off, ...(p.off || {}) };
-    if (p.home !== undefined) S.home = p.home;
-    ["watch", "notes", "off", "home"].forEach(save);
-    toast("Imported");
-  } catch { toast("That share link didn't work"); }
-}
-
-// ------------------------------------------------------------------ shell
-const VIEWS = { watch: viewWatch, top: viewTop, compare: viewCompare, flyers: viewFlyers, list: viewList };
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2200); }
+const VIEWS = { week: viewWeek, flip: viewFlip, list: viewList, search: viewSearch };
 function render() {
-  itemIndex.clear();
-  $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === S.tab));
-  $$(".panel").forEach((p) => p.classList.toggle("active", p.id === S.tab));
-  if (S.tab === "groceries") {
-    $$(".subnav .chip").forEach((c) => c.classList.toggle("active", c.dataset.view === S.view));
-    (VIEWS[S.view] || viewWatch)();
-  } else viewRestaurants();
+  index.clear();
+  $$(".tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === S.tab));
+  (VIEWS[S.tab] || viewWeek)();
   updateCount();
 }
-function storebar() {
-  const t = $(".storebar .muted");
-  if (t) t.innerHTML = S.home ? `Your store: <strong>${esc(S.home)}</strong>` : "Lacombe grocery &amp; drug stores";
-}
-function header() {
-  const g = D.meta.groceries || {}, r = D.meta.restaurants || {};
-  const last = [g.updated, r.updated].filter(Boolean).sort().pop();
-  const next = last ? new Date(new Date(last).getTime() + 6 * 3600000) : null;
-  $("#updated").textContent = last
-    ? `Updated ${ago(last)}${next && next > now ? ` · next in ~${Math.max(1, Math.round((next - now) / 3600000))} h` : ""}`
-    : "Waiting for the first update…";
-  const bits = [];
-  if (g.ok === false) bits.push(`Grocery update failed ${ago(g.failed_at)} (showing the previous data).`);
-  if (r.ok === false) bits.push(`Restaurant deals update failed ${ago(r.failed_at)}.`);
-  if (g.stats) bits.push(`${g.stats.flyers} flyers · ${g.stats.items} tracked prices · ${g.stats.history_points} price points since ${g.stats.history_since}.`);
-  $("#sources").textContent = bits.join(" ");
-}
+$$(".tabbar button").forEach((b) => (b.onclick = () => { S.tab = b.dataset.tab; keep("tab"); render(); window.scrollTo(0, 0); }));
+$("#settingsBtn").onclick = openSettings;
 
-$$(".tab").forEach((t) => (t.onclick = () => { S.tab = t.dataset.tab; save("tab"); render(); window.scrollTo(0, 0); }));
-$$(".subnav .chip").forEach((c) => (c.onclick = () => { S.view = c.dataset.view; save("view"); render(); }));
-const sb = $("#storesBtn"); if (sb) sb.onclick = storesSheet;
-document.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeSheet(); });
-
-(async function init() {
-  try { await loadAll(); }
-  catch (e) { $("#gview").innerHTML = `<div class="card empty">Couldn't load deals (${esc(e.message)}). Try again in a minute.</div>`; }
-  checkImport();
-  header();
-  storebar();
-  render();
+(async () => {
+  try { await load(); render(); }
+  catch (e) { $("#view").innerHTML = `<div class="empty" style="margin-top:20px"><b>The deals didn't load.</b> Check your connection and pull down to refresh. (${esc(e.message)})</div>`; }
 })();

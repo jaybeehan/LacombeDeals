@@ -22,7 +22,7 @@ NON_FOOD_WORDS = [
     "garbage bag", "trash bag", "glad bags", "ziploc", "foil", "plastic wrap", "shampoo",
     "conditioner", "body wash", "bar soap", "hand soap", "toothpaste", "toothbrush", "mouthwash",
     "floss", "deodorant", "antiperspirant", "razor", "shaving", "lotion", "sunscreen", "cosmetic",
-    "makeup", "hair colour", "hair color", "tampon", "vitamin",
+    "makeup", "skincare", "skin care", "lozenge", "hair colour", "hair color", "tampon", "vitamin",
     "supplement", "tylenol", "advil", "allergy", "cough", "cold & flu", "medicine", "pharmacy",
     "dog", "cat", "puppy", "kitten", "dog food", "cat food", "litter", "pet", "treats for", "batteries", "battery",
     "light bulb", "candle", "air freshener", "febreze", "gift card", "flowers", "bouquet", "cookware", "pc optimum points", "scene+", "bonus points", "banner", "contest", "diapers", "toys", "dawn", "swiffer", "mattress", "earbuds",

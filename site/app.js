@@ -26,6 +26,8 @@ const S = {
   view: store.get("view", "watch"),
   tab: store.get("tab", "groceries"),
   dept: store.get("dept", ""),
+  home: store.get("home", "Sobeys"),        // usual store, shown first everywhere
+  topScope: store.get("topScope", "home"),
 };
 if (S.watch == null) S.watch = []; // first visit: empty with suggestions
 const save = (k) => store.set(k, S[k]);
@@ -295,7 +297,7 @@ function dealRow(it, opts = {}) {
   const id = reg(it);
   const r = it.r || { tier: it.tier || "unknown", why: it.why ? [it.why] : [] };
   const loc = D.local.has(it.m) ? ` <span class="badge b-local">Lacombe</span>` : "";
-  return `<div class="row">
+  return `<div class="row ${it.m === S.home ? "home" : ""}">
     ${it.img ? `<img loading="lazy" src="${esc(it.img)}" alt="">` : ""}
     <div class="info">
       <div class="store">${esc(it.m)}${loc}</div>
@@ -310,7 +312,7 @@ function dealRow(it, opts = {}) {
 function flyerRow(it) {
   const id = reg({ ...it, price: it.p, ptxt: `$${it.p.toFixed(2)}` });
   const loc = D.local.has(it.m) ? ` <span class="badge b-local">Lacombe</span>` : "";
-  return `<div class="row">
+  return `<div class="row ${it.m === S.home ? "home" : ""}">
     ${it.img ? `<img loading="lazy" src="${esc(it.img)}" alt="">` : ""}
     <div class="info"><div class="store">${esc(it.m)}${loc}</div>
       <a class="nm" href="${itemUrl(it.id)}" target="_blank" rel="noopener">${esc(it.n)}</a>
@@ -330,7 +332,7 @@ document.addEventListener("click", (e) => {
 
 // ------------------------------------------------------------------ views: groceries
 const SUGGEST = ["chicken breast", "ground beef", "milk", "eggs", "butter", "cheddar", "bread", "bacon",
-  "coffee", "bananas", "apples", "pork chops", "yogurt", "toilet paper", "laundry detergent"];
+  "coffee", "bananas", "apples", "pork chops", "yogurt", "cheese", "pasta", "chips", "ice cream"];
 
 function viewWatch() {
   const el = $("#gview");
@@ -379,17 +381,30 @@ function watchCard(w, a) {
   } else if (!best) {
     body = `<p class="muted small" style="margin:8px 0 0">Not in any flyer this week — checked every 6 hours.</p>`;
   } else {
-    const pool = a.cur.filter((i) => i.b === best.b && i.rel === best.rel && i.r.tier !== "above");
-    const top = pool.reduce((acc, i) => (TIER_ORDER.indexOf(i.r.tier) > TIER_ORDER.indexOf(acc.r.tier) ? i : acc), best);
-    const show = TIER_ORDER.indexOf(top.r.tier) > TIER_ORDER.indexOf(best.r.tier) ? top : best;
+    const relCur = a.cur.filter((i) => i.rel === best.rel);
+    const homeItems = relCur.filter((i) => i.m === S.home && okStore(i.m))
+      .sort((x, y) => (TIER_ORDER.indexOf(y.r.tier) - TIER_ORDER.indexOf(x.r.tier)) || ((x.up ?? 1e9) - (y.up ?? 1e9)));
+    let show, note = "";
+    if (homeItems.length) {
+      show = homeItems[0];
+      const alt = relCur.filter((i) => i.m !== S.home && i.b === show.b && i.up && show.up && i.up <= show.up * 0.9)
+        .sort((x, y) => x.up - y.up)[0];
+      if (alt) note = `<div class="tip">Cheaper at ${esc(alt.m)}: ${esc(priceText(alt))}${alt.b !== "ea" ? " (" + esc(fmtUnit(alt.up, alt.b)) + ")" : ""} · ${Math.round(100 * (1 - alt.up / show.up))}% less</div>`;
+    } else {
+      const pool = a.cur.filter((i) => i.b === best.b && i.rel === best.rel && i.r.tier !== "above");
+      const top = pool.reduce((acc, i) => (TIER_ORDER.indexOf(i.r.tier) > TIER_ORDER.indexOf(acc.r.tier) ? i : acc), best);
+      show = TIER_ORDER.indexOf(top.r.tier) > TIER_ORDER.indexOf(best.r.tier) ? top : best;
+      if (S.home && okStore(S.home)) note = `<div class="tip muted-tip">Not on sale at ${esc(S.home)} this week</div>`;
+    }
     const id = reg(show);
     body = `<div class="best">
       ${show.img ? `<img loading="lazy" src="${esc(show.img)}" alt="">` : ""}
       <div class="info">
-        <div>${badge(show.r.tier)} <span class="store">${esc(show.m)}</span>${D.local.has(show.m) ? ` <span class="badge b-local">Lacombe</span>` : ""}</div>
+        <div>${badge(show.r.tier)} <span class="store">${esc(show.m)}</span>${show.m === S.home ? ` <span class="badge b-local">Your store</span>` : ""}${D.local.has(show.m) ? ` <span class="badge b-local">Lacombe</span>` : ""}</div>
         <div class="nm small">${esc(show.n)}</div>
         <div><span class="price">${esc(priceText(show))}</span> <span class="unit">${esc([unitText(show), until(show.to)].filter(Boolean).join(" · "))}</span></div>
         <div class="why">${esc(show.r.why.join(" · ") || (show === best ? "lowest price this week" : ""))}</div>
+        ${note}
       </div>
       <button class="addbtn ${inList(show.id) ? "on" : ""}" data-add="${id}" aria-label="Add to shopping list">${inList(show.id) ? "✓" : "+"}</button>
     </div>`;
@@ -398,7 +413,7 @@ function watchCard(w, a) {
   const others = a.cur.map((i) => dealRowWatch(i, w)).join("") + a.flyerOnly.slice(0, 15).map(flyerRow).join("");
   return `<article class="card watch">
     <div class="watch-head"><div class="title"><h3>${esc(w.q)}</h3>
-      <div class="small muted">${(() => { const all = [...a.cur, ...a.flyerOnly]; return all.length ? `${all.length} in flyers at ${new Set(all.map((i) => i.m)).size} stores` : ""; })()}${w.target ? ` · target ${fmtUnit(w.target, w.tb)}` : ""}</div></div>
+      <div class="small muted">${(() => { const all = [...a.cur, ...a.flyerOnly]; return all.length ? (() => { const n = new Set(all.map((i) => i.m)).size; return `${all.length} in flyers at ${n} store${n === 1 ? "" : "s"}`; })() : ""; })()}${w.target ? ` · target ${fmtUnit(w.target, w.tb)}` : ""}</div></div>
       <button class="iconbtn" data-edit="${w.id}" aria-label="Edit ${esc(w.q)}">⋯</button></div>
     ${body}
     ${sparkline(a.hist, a.basis)}
@@ -454,19 +469,22 @@ function viewTop() {
   const depts = [...new Set(D.items.map((i) => i.dept).filter(Boolean))];
   const order = ["Meat & seafood", "Dairy & eggs", "Produce", "Bakery & breakfast", "Pantry & snacks", "Frozen", "Drinks", "Household & personal"];
   depts.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-  let list = D.items.filter((i) => okStore(i.m) && (!S.dept || i.dept === S.dept) &&
+  const homeOnly = S.topScope === "home" && S.home;
+  let list = D.items.filter((i) => okStore(i.m) && (!homeOnly || i.m === S.home) && (!S.dept || i.dept === S.dept) &&
     (["stockup", "great", "good"].includes(i.tier)));
   const seen = new Set();
   list = list.filter((i) => { const k = i.m + "|" + i.norm; if (seen.has(k)) return false; seen.add(k); return true; });
   list.sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier) || ((b.pct ?? b.sav ?? 0) - (a.pct ?? a.sav ?? 0)));
   const since = D.hist.since;
   const weeks = since ? Math.max(0, Math.floor((now - new Date(since)) / (7 * 86400000))) : 0;
-  el.innerHTML = `<div class="filters"><select id="dept" aria-label="Department"><option value="">All departments</option>
+  el.innerHTML = `${S.home ? `<div class="subnav" style="padding-top:0"><button class="chip sm ${homeOnly ? "active" : ""}" data-scope="home">${esc(S.home)}</button><button class="chip sm ${homeOnly ? "" : "active"}" data-scope="all">All stores</button></div>` : ""}
+    <div class="filters"><select id="dept" aria-label="Department"><option value="">All departments</option>
       ${depts.map((d) => `<option ${S.dept === d ? "selected" : ""}>${esc(d)}</option>`).join("")}</select></div>
     ${weeks < 4 ? `<div class="warn">Price history started ${esc(since || "today")}. Until a few weeks are collected, ratings lean on store “% off” claims and other stores' prices, so expect fewer <strong>Stock up</strong> tags at first.</div>` : ""}
     <div class="legend">${["stockup", "great", "good"].map(badge).join("")}</div>
     ${list.length ? `<div class="card rows">${list.slice(0, 150).map((i) => dealRow({ ...i, r: { tier: i.tier, why: i.why ? [i.why] : [] } })).join("")}</div>`
-      : `<div class="card empty">No standout deals for these stores right now.</div>`}`;
+      : `<div class="card empty">No standout deals ${homeOnly ? "at " + esc(S.home) : "for these stores"} right now.</div>`}`;
+  $$("[data-scope]", el).forEach((b) => (b.onclick = () => { S.topScope = b.dataset.scope; save("topScope"); render(); }));
   $("#dept").onchange = (e) => { S.dept = e.target.value; save("dept"); render(); };
 }
 
@@ -609,18 +627,21 @@ function viewRestaurants() {
 function storesSheet() {
   const ms = [...new Set(D.flyers.map((f) => f.merchant))].sort((a, b) => (D.local.has(b) - D.local.has(a)) || a.localeCompare(b));
   openSheet(`<div class="sheet-head"><h2 style="margin:0">Stores</h2><button class="iconbtn" data-close>✕</button></div>
+    <div class="field"><label for="homeSel">Your usual store (shown first everywhere)</label>
+      <select id="homeSel"><option value="">None</option>${ms.map((m) => `<option ${S.home === m ? "selected" : ""}>${esc(m)}</option>`).join("")}</select></div>
     <p class="small muted">Lacombe stores with a weekly flyer (food and drinks only). Untick any you don't shop at.</p>
     <div class="card rows">${ms.map((m) => `<label class="row" style="cursor:pointer"><input type="checkbox" class="check" data-store="${esc(m)}" ${S.off[m] ? "" : "checked"}>
       <div class="info"><span class="store">${esc(m)}</span></div></label>`).join("")}</div>`,
   (el) => {
     $("[data-close]", el).onclick = closeSheet;
+    $("#homeSel", el).onchange = (e) => { S.home = e.target.value; save("home"); storebar(); render(); };
     $$("[data-store]", el).forEach((c) => (c.onchange = () => { if (c.checked) delete S.off[c.dataset.store]; else S.off[c.dataset.store] = true; save("off"); render(); }));
   });
 }
 
 // ------------------------------------------------------------------ sharing between devices
 function shareData() {
-  const payload = { watch: S.watch, off: S.off, notes: S.notes, localOnly: S.localOnly };
+  const payload = { watch: S.watch, off: S.off, notes: S.notes, home: S.home };
   const code = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
   const url = `${location.origin}${location.pathname}#import=${code}`;
   openSheet(`<div class="sheet-head"><h2 style="margin:0">Share your items</h2><button class="iconbtn" data-close>✕</button></div>
@@ -644,7 +665,8 @@ function checkImport() {
     for (const w of p.watch || []) if (!S.watch.some((x) => x.q === w.q)) S.watch.push({ ...w, id: uid() });
     for (const nt of p.notes || []) if (!S.notes.some((x) => x.text === nt.text)) S.notes.push({ ...nt, id: uid() });
     S.off = { ...S.off, ...(p.off || {}) };
-    ["watch", "notes", "off"].forEach(save);
+    if (p.home !== undefined) S.home = p.home;
+    ["watch", "notes", "off", "home"].forEach(save);
     toast("Imported");
   } catch { toast("That share link didn't work"); }
 }
@@ -660,6 +682,10 @@ function render() {
     (VIEWS[S.view] || viewWatch)();
   } else viewRestaurants();
   updateCount();
+}
+function storebar() {
+  const t = $(".storebar .muted");
+  if (t) t.innerHTML = S.home ? `Your store: <strong>${esc(S.home)}</strong>` : "Lacombe grocery &amp; drug stores";
 }
 function header() {
   const g = D.meta.groceries || {}, r = D.meta.restaurants || {};
@@ -685,5 +711,6 @@ document.addEventListener("click", (e) => { if (e.target.closest("[data-close]")
   catch (e) { $("#gview").innerHTML = `<div class="card empty">Couldn't load deals (${esc(e.message)}). Try again in a minute.</div>`; }
   checkImport();
   header();
+  storebar();
   render();
 })();

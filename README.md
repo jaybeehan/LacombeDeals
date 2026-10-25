@@ -12,7 +12,7 @@ Grocery flyer deals and restaurant deals for Lacombe, AB. Refreshed automaticall
 - **Compare** – search anything and see every store's price sorted by $/lb, $/L or each.
 - **Flyers** – every grocery flyer, searchable, with a link to the full flyer on Flipp.
 - **List** – tap **+** on any deal to build a shopping list grouped by store; copy it to text.
-- Choose which stores to include.
+- Choose which stores to include and your usual store (Sobeys by default): its prices are shown first, with a tip when another store is clearly cheaper, and Top deals opens on it.
 
 **Restaurants** (no delivery apps)
 - Deals posted on RedFlagDeals for chains with a Lacombe location, then other Canadian restaurant deals.

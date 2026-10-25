@@ -48,7 +48,8 @@ DEPARTMENTS = {
                         "chocolate", "candy"],
     "Frozen": ["frozen pizza", "frozen vegetables", "frozen fries", "chicken nuggets", "perogies",
                "lasagna", "frozen fruit"],
-    "Drinks": ["coffee", "k-cups", "tea", "juice", "pop", "soft drinks", "water", "sparkling water"],
+    "Drinks": ["coffee", "k-cups", "tea", "juice", "pop", "soft drinks", "coca-cola", "pepsi",
+               "water", "sparkling water", "energy drink", "sports drink"],
 }
 STAPLES = [q for qs in DEPARTMENTS.values() for q in qs]
 DEPT_OF = {q: d for d, qs in DEPARTMENTS.items() for q in qs}

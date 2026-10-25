@@ -222,13 +222,44 @@ def collect_groceries(state_dir, out_dir):
         time.sleep(0.25)
     log("searched items:", len(items))
 
-    # Drug-store flyers: keep only items Flipp categorises as food/drink
-    food_ids = set(items)
+    # Drug-store flyers are mostly cosmetics/pharmacy. Keep an item only if Flipp
+    # categorises it as food/drink. Items not already seen in the searches above are
+    # looked up one by one (by their own name); answers are cached between runs.
+    cls_path = os.path.join(state_dir, "drugstore_class.json")
+    cls = load(cls_path, {})
+    drug_ids = {str(fi["id"]) for f in flyers if f["merchant"] in config.DRUG_STORES
+                for fi in flyer_items[str(f["id"])]}
     for f in flyers:
-        if f["merchant"] in config.DRUG_STORES:
-            kept = [i for i in flyer_items[str(f["id"])] if i["id"] in food_ids]
-            flyer_items[str(f["id"])] = kept
-            f["count"] = len(kept)
+        if f["merchant"] not in config.DRUG_STORES:
+            continue
+        kept = []
+        for fi in flyer_items[str(f["id"])]:
+            key = str(fi["id"])
+            if fi["id"] in items:
+                cls[key] = True
+            elif key not in cls:
+                q = " ".join(re.sub(r"\(.*?\)", " ", fi["n"]).split()[:5])
+                found = None
+                results = search(q)
+                for raw in results:
+                    if (raw.get("flyer_item_id") or raw.get("id")) == fi["id"]:
+                        found = raw
+                        break
+                time.sleep(0.2)
+                if found:
+                    it = build_item(found, flyer_ids, flyer_by_id)
+                    cls[key] = bool(it)
+                    if it and it["price"] is not None:
+                        items[it["id"]] = it
+                        group_of.setdefault(it["id"], (q, False))
+                elif results:
+                    cls[key] = False  # Flipp answered but didn't list it: treat as non-food
+            if cls.get(key):
+                kept.append(fi)
+        flyer_items[str(f["id"])] = kept
+        f["count"] = len(kept)
+        log(f["merchant"], "food items:", len(kept))
+    save(cls_path, {k: v for k, v in cls.items() if k in drug_ids})  # forget expired flyers
     if len(items) < int(os.environ.get("MIN_ITEMS", "30")):
         raise RuntimeError(f"Only {len(items)} items found - Flipp may be failing")
 

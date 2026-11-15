@@ -24,9 +24,9 @@ jobs:
     timeout-minutes: 30
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy_try1.outputs.page_url || steps.deploy_try2.outputs.page_url || steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Load saved history (data branch)
         run: |
@@ -38,7 +38,7 @@ jobs:
           fi
           ls -la state
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -73,11 +73,27 @@ jobs:
           ls -la _site _site/data
 
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+
+      # GitHub sometimes can't find the just-uploaded site for a moment; try again before failing.
+      - id: deploy_try1
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+      - name: Wait before retrying publish
+        if: steps.deploy_try1.outcome == 'failure'
+        run: sleep 60
+      - id: deploy_try2
+        if: steps.deploy_try1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+      - name: Wait before last publish attempt
+        if: steps.deploy_try1.outcome == 'failure' && steps.deploy_try2.outcome == 'failure'
+        run: sleep 180
       - id: deploy
-        uses: actions/deploy-pages@v4
+        if: steps.deploy_try1.outcome == 'failure' && steps.deploy_try2.outcome == 'failure'
+        uses: actions/deploy-pages@v5
 
       - name: Keep the 6-hour schedule alive
         if: always()

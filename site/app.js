@@ -131,14 +131,14 @@ const SUPPERS = [
   { name: "Tacos", main: ["ground beef", "ground turkey"], not: ["patty", "patties", "burger"], lb: 1.5, sides: [["tortilla !chip", "taco shell", "taco kit"], ["shredded cheese", "cheddar !cracker"], ["lettuce"], ["tomato !sauce !paste !soup !juice !ketchup !canned !diced"], ["salsa"], ["sour cream !chip !dip"]] },
   { name: "Spaghetti and meat sauce", main: ["ground beef", "italian sausage"], not: ["patty", "patties", "burger"], lb: 1.5, sides: [["spaghetti !sauce", "pasta !sauce !salad"], ["pasta sauce"], ["parmesan"], ["garlic bread", "baguette"]] },
   { name: "Chili", main: ["ground beef"], not: ["patty", "patties", "burger"], lb: 1.5, sides: [["kidney beans", "beans !green !coffee"], ["canned tomatoes", "diced tomatoes"], ["onion !ring"], ["cheddar !cracker", "shredded cheese"]] },
-  { name: "Burgers and chips", main: ["burger", "patties", "ground beef"], not: ["bun", "seasoning", "plant"], lb: 2, sides: [["hamburger buns", "burger buns", "buns !hot !cinnamon"], ["cheese slices", "singles"], ["potato chips", "chips !chocolate !tortilla"], ["coca cola", "pepsi", "pop !corn !tart"]] },
-  { name: "Chicken stir-fry", main: ["chicken breast", "chicken thigh"], not: ["breaded", "nugget", "strip", "deli", "sliced", "roasted", "cooked", "stuffed", "burger", "soup", "pie"], lb: 2, sides: [["rice !cake !krispie !crispy"], ["peppers !pepperoni !jalapeno", "pepper !pepperoni !black !jalapeno"], ["broccoli"], ["stir fry sauce", "teriyaki sauce", "soy sauce"]] },
+  { name: "Burgers and chips", main: ["beef burger", "beef patties", "burger patties", "hamburger patties", "burgers !veggie !plant !chicken !fish", "ground beef"], not: ["bun", "seasoning", "plant", "hash", "potato", "veggie", "chicken", "fish", "salmon"], lb: 2, sides: [["hamburger buns", "burger buns", "buns !hot !cinnamon"], ["cheese slices", "singles"], ["potato chips", "chips !chocolate !tortilla"], ["coca cola", "pepsi", "pop !corn !tart"]] },
+  { name: "Chicken stir-fry", main: ["chicken breast", "chicken thigh"], not: ["breaded", "nugget", "strip", "deli", "sliced", "roasted", "cooked", "stuffed", "burger", "soup", "pie"], lb: 2, sides: [["rice !cake !krispie !crispy !cracker !thin"], ["peppers !pepperoni !jalapeno", "pepper !pepperoni !black !jalapeno"], ["broccoli"], ["stir fry sauce", "teriyaki sauce", "soy sauce"]] },
   { name: "Sheet-pan chicken and vegetables", main: ["chicken drumstick", "chicken thigh", "chicken leg", "whole chicken"], not: ["breaded", "nugget", "wing", "cooked", "soup"], lb: 3, sides: [["potato !chip !salad !mashed"], ["carrot !cake"], ["broccoli", "brussels sprouts"]] },
   { name: "Wings night", main: ["wing"], not: ["sauce"], lb: 2, sides: [["celery"], ["carrot !cake"], ["ranch dressing", "ranch dip"], ["coca cola", "pepsi", "pop !corn !tart"]] },
   { name: "Pork chops with applesauce", main: ["pork chop"], lb: 2, sides: [["potato !chip !salad"], ["applesauce", "apple sauce", "apple !juice !pie !cider !crisp"], ["corn !flake !chip !pop", "green beans"]] },
   { name: "Roast pork loin", main: ["pork loin", "pork roast", "pork tenderloin", "pork shoulder"], not: ["chop", "back bacon", "sliced"], lb: 3, sides: [["potato !chip !salad"], ["carrot !cake"], ["apple !juice !pie !cider"]] },
   { name: "Ribs with corn and coleslaw", main: ["ribs"], not: ["prime rib", "rib eye", "ribeye"], lb: 3, sides: [["bbq sauce", "barbecue sauce"], ["corn !flake !chip !pop !beef"], ["coleslaw", "cabbage"]] },
-  { name: "Salmon with rice and broccoli", main: ["salmon"], not: ["smoked", "canned", "sockeye salmon 142"], lb: 1.5, sides: [["rice !cake !krispie !crispy"], ["broccoli", "asparagus"], ["lemon !juice !tea !pie"]] },
+  { name: "Salmon with rice and broccoli", main: ["salmon"], not: ["smoked", "canned", "sockeye salmon 142"], lb: 1.5, sides: [["rice !cake !krispie !crispy !cracker !thin"], ["broccoli", "asparagus"], ["lemon !juice !tea !pie"]] },
   { name: "Fish and chips", main: ["fish", "cod", "haddock", "pollock"], not: ["canned", "tuna", "food"], lb: 0, sides: [["fries", "french fries"], ["coleslaw"], ["tartar"]] },
   { name: "Breakfast for supper", main: ["bacon", "breakfast sausage"], not: ["bit", "chip", "dressing", "kit", "caesar", "salad", "burger"], lb: 0, sides: [["eggs !roll !nog !white !chocolate"], ["bread !crumb !breaded !garlic"], ["hash brown", "potato !chip !salad !mashed"], ["orange juice", "juice !box"]] },
   { name: "Perogies and sausage", main: ["perogies", "perogy"], lb: 0, sides: [["kielbasa", "farmer sausage", "smoked sausage", "sausage !breakfast !roll"], ["sour cream !chip !dip"], ["onion !ring"]] },
@@ -176,7 +176,7 @@ function planSuppers() {
 
 // ------------------------------------------------------------ cheaper elsewhere (same kind of item, by weight/volume)
 const TRIP = ["chicken breast", "ground beef", "butter", "milk", "eggs", "cheddar", "bacon", "coffee", "bananas", "apples",
-  "potatoes", "pork chops", "salmon", "steak", "roast", "chicken thighs", "yogurt", "bread", "cream", "mozzarella"];
+  "potatoes", "pork chops", "salmon", "chicken thighs", "yogurt", "bread", "cream", "mozzarella"];
 function worthTheTrip() {
   if (!S.home || S.off[S.home]) return [];
   const out = [];

@@ -1,0 +1,24 @@
+{
+ "postal_code": "T4L2N3",
+ "town": "Lacombe",
+ "groceries": {
+  "ok": true,
+  "updated": "2026-11-28T07:48:44.571428+00:00",
+  "stats": {
+   "flyers": 10,
+   "items": 640,
+   "flyer_items": 1169,
+   "history_points": 3988,
+   "history_since": "2026-10-24"
+  }
+ },
+ "restaurants": {
+  "ok": true,
+  "updated": "2026-11-28T07:48:44.571428+00:00",
+  "stats": {
+   "rfd_posts_checked": 15,
+   "rfd_kept": 19
+  }
+ },
+ "updated": "2026-11-28T07:48:44.571428+00:00"
+}
